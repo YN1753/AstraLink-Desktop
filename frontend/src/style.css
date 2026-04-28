@@ -1,0 +1,17 @@
+/* 引入 Tailwind 基础指令 */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+    /* 强制系统使用深色模式，符合 AstraLink 的星空主题 */
+    color-scheme: dark;
+}
+
+body {
+    margin: 0;
+    /* 设置深色背景，防止白屏闪烁 */
+    background-color: #0b0e14;
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden; /* 桌面端通常不需要浏览器滚动条 */
+}

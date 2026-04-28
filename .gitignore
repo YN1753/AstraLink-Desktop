@@ -1,0 +1,26 @@
+# Binary output
+AstraLink.exe
+astralink.exe
+/bin/
+
+# Data directory (user data, avatars, notes, db)
+data/
+
+# Frontend build output
+frontend/dist/
+
+# Frontend dependencies
+frontend/node_modules/
+
+# Editor/IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Wails build artifacts
+frontend/wailsjs/go/main/App.js
