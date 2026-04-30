@@ -16,13 +16,13 @@ func InitializeApp(basePath string) (*App, error) {
 	wire.Build(
 		// 1. 基础连接
 		db.InitDB,
-
-		// 2. 仓储层
+		//db.BleveInit,
+		//2. 仓储层
 		repo.NewBaseRepo,
 
 		// 3. 所有业务服务层 (确保这些 New 函数在对应的 service 包里已定义)
 		service.NewNodeService,
-		//service.NewUserService,
+		service.NewRelationService,
 		//service.NewGalaxyService,
 		//service.NewStatsService,
 		//service.NewActivityService,

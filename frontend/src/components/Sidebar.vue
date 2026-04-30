@@ -1,24 +1,55 @@
 <script setup>
-defineProps(['user'])
-defineEmits(['open-note', 'open-settings'])
+const props = defineProps(['user', 'stats', 'currentView', 'showSearch'])
+const emit = defineEmits(['open-note', 'open-settings', 'open-search', 'go-home'])
 </script>
 
 <template>
   <div class="sidebar-container glass-panel">
-    <div class="brand">
+    <div class="brand" @click="$emit('go-home')">
       <div class="logo-icon"></div>
       <span class="brand-name">ASTRALINK</span>
     </div>
 
     <nav class="nav-list">
       <div class="nav-group">NAVIGATE</div>
-      <div class="nav-item" @click="$emit('open-note')">
+      <div class="nav-item" :class="{ active: currentView === 'home' }" @click="$emit('go-home')">
+        <i class="fa-solid fa-house"></i> 首页 / HOME
+      </div>
+      <div class="nav-item" :class="{ active: currentView === 'editor' }" @click="$emit('open-note')">
         <i class="fa-solid fa-plus"></i> 快速记录 / QUICK WRITE
       </div>
       <div class="nav-item">
         <i class="fa-solid fa-box-archive"></i> 所有记录 / ARCHIVE
       </div>
+      <div class="nav-item" :class="{ active: currentView === 'search' || showSearch }" @click="$emit('open-search')">
+        <i class="fa-solid fa-magnifying-glass"></i> 搜索 / SEARCH
+      </div>
     </nav>
+
+    <!-- 存储统计 -->
+    <div class="stats-section">
+      <div class="stats-title">存储统计</div>
+      <div class="stat-item">
+        <span class="stat-icon">📄</span>
+        <span class="stat-label">笔记</span>
+        <span class="stat-value">{{ stats.noteCount || 0 }}</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-icon">🌌</span>
+        <span class="stat-label">星系</span>
+        <span class="stat-value">{{ stats.galaxyCount || 0 }}</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-icon">🏷️</span>
+        <span class="stat-label">标签</span>
+        <span class="stat-value">{{ stats.tagCount || 0 }}</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-icon">💾</span>
+        <span class="stat-label">占用</span>
+        <span class="stat-value">{{ (stats.totalSize / 1024 / 1024).toFixed(1) || 0 }} MB</span>
+      </div>
+    </div>
 
     <div class="sidebar-footer" @click="$emit('open-settings')">
       <img v-if="user.avatar" :src="user.avatar" class="user-avatar-img" />
@@ -40,7 +71,6 @@ defineEmits(['open-note', 'open-settings'])
   flex-direction: column;
   padding: 30px 15px;
   box-sizing: border-box;
-  /* 移除实色边框，改用变量 */
   border-right: 1px solid var(--glass-border);
 }
 
@@ -54,9 +84,43 @@ defineEmits(['open-note', 'open-settings'])
   cursor: pointer; transition: 0.2s; font-weight: 500;
 }
 .nav-item:hover { background: rgba(255, 255, 255, 0.05); color: var(--text-primary); }
+.nav-item.active {
+  background: rgba(var(--accent-rgb), 0.15);
+  color: var(--accent);
+  font-weight: 700;
+}
+.nav-item.active i { color: var(--accent); }
+
+.brand { display: flex; align-items: center; gap: 12px; padding: 0 15px 40px; cursor: pointer; }
+
+/* 存储统计 */
+.stats-section {
+  margin-top: auto;
+  padding: 15px;
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 12px;
+  border: 1px solid var(--glass-border);
+}
+.stats-title {
+  font-size: 10px;
+  color: var(--text-secondary);
+  letter-spacing: 1px;
+  margin-bottom: 12px;
+  opacity: 0.6;
+}
+.stat-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  font-size: 12px;
+}
+.stat-icon { font-size: 12px; }
+.stat-label { color: var(--text-secondary); flex: 1; }
+.stat-value { color: var(--text-primary); font-weight: 600; }
 
 .sidebar-footer {
-  margin-top: auto;
+  margin-top: 15px;
   padding: 15px;
   border-radius: 12px;
   display: flex;

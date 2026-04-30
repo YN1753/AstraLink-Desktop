@@ -6,5 +6,6 @@ type MergeNodeReq struct {
 	Type       string  `json:"type"`
 	File       string  `json:"file"`
 	ParentPath string  `json:"parentPath"`
+	ParentID   string  `json:"parentId"` // 父节点ID，用于创建relation
 	Others     JSONMap `json:"others"`
 }

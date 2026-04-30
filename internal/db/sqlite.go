@@ -42,7 +42,7 @@ func InitDB(basePath string) (*gorm.DB, error) {
 	sqlDB.Exec("PRAGMA foreign_keys=ON;")
 
 	// 5. 自动迁移表结构 (把你的模型传进去)
-	err = db.AutoMigrate(&model.Node{})
+	err = db.AutoMigrate(&model.Node{}, &model.Relation{})
 	if err != nil {
 		return nil, fmt.Errorf("表结构迁移失败: %w", err)
 	}

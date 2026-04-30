@@ -9,7 +9,7 @@ import { indent } from '@milkdown/plugin-indent'
 import { listener, listenerCtx } from '@milkdown/plugin-listener'
 import { nord } from '@milkdown/theme-nord'
 
-// 🌟 核心：必须在所有逻辑之前初始化全局 Prism
+// 全局 Prism
 import Prism from 'prismjs'
 window.Prism = Prism
 import 'prismjs/themes/prism-tomorrow.css'
@@ -23,14 +23,12 @@ useEditor((root) => {
   return Editor.make()
       .config((ctx) => {
         ctx.set(rootCtx, root)
-        // 这里的空格非常关键，防止空文档导致的渲染节点丢失
         ctx.set(defaultValueCtx, props.modelValue || "# 未命名星谱\n\n在此输入正文...")
         ctx.get(listenerCtx).markdownUpdated((_, markdown) => {
           emit('update:modelValue', markdown)
         })
       })
       .config(nord)
-      // 🌟 必须严格遵守此顺序：commonmark 必须第一个加载
       .use(commonmark)
       .use(gfm)
       .use(history)
@@ -38,6 +36,23 @@ useEditor((root) => {
       .use(indent)
       .use(listener)
 }, [])
+
+// 监听滚动到行事件
+if (typeof window !== 'undefined') {
+  window.addEventListener('scroll-to-line', (e) => {
+    const { line } = e.detail
+    // 通过 DOM 操作滚动到对应行
+    setTimeout(() => {
+      const editor = document.querySelector('.ProseMirror')
+      if (editor) {
+        const lines = editor.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li')
+        if (lines[line]) {
+          lines[line].scrollIntoView({ behavior: 'smooth', block: 'start' })
+        }
+      }
+    }, 100)
+  })
+}
 </script>
 
 <template>
@@ -49,27 +64,69 @@ useEditor((root) => {
 <style scoped>
 .milkdown-pro-wrapper { width: 100%; min-height: 500px; text-align: left; }
 
-/* 🌟 强制显示光标和正文区域 */
 :deep(.milkdown) { background: transparent !important; }
 :deep(.ProseMirror) {
   outline: none !important;
-  color: #d1d5db !important;
+  color: var(--text-primary);
   line-height: 1.8;
   font-size: 17px;
-  min-height: 600px; /* 确保大面积可点 */
+  min-height: 600px;
   padding-bottom: 200px;
 }
 
-/* 标题样式：发光特效 */
-:deep(.ProseMirror h1) {
-  font-weight: 200; color: #fff; border-bottom: 1px solid #3b82f6;
-  padding-bottom: 10px; margin: 30px 0;
-  text-shadow: 0 0 10px rgba(59, 130, 246, 0.3);
+/* 占位符提示文字 */
+:deep(.ProseMirror p.is-editor-empty:first-child::before) {
+  content: attr(data-placeholder);
+  color: var(--text-secondary);
+  opacity: 0.4;
+  pointer-events: none;
+  float: left;
+  height: 0;
 }
 
-/* 代码块增强 */
+/* 标题样式 */
+:deep(.ProseMirror h1) {
+  font-weight: 200; color: var(--text-primary); border-bottom: 1px solid var(--accent);
+  padding-bottom: 10px; margin: 30px 0;
+}
+:deep(.ProseMirror h2),
+:deep(.ProseMirror h3),
+:deep(.ProseMirror h4) {
+  color: var(--text-primary);
+}
+
+/* 链接样式 */
+:deep(.ProseMirror a) {
+  color: var(--accent);
+  text-decoration: none;
+}
+:deep(.ProseMirror a:hover) {
+  text-decoration: underline;
+}
+
+/* 双链 [[笔记名]] 样式 */
+:deep(.ProseMirror .wiki-link) {
+  color: var(--accent);
+  background: rgba(59, 130, 246, 0.1);
+  padding: 2px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: 0.2s;
+}
+:deep(.ProseMirror .wiki-link:hover) {
+  background: rgba(59, 130, 246, 0.2);
+}
+:deep(.ProseMirror .wiki-link.missing) {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.1);
+}
+
+/* 代码块 */
 :deep(.milkdown .code-fence) {
-  background: #1e1e1e !important; border: 1px solid #333;
-  border-radius: 8px; padding: 1.5rem; margin: 20px 0;
+  background: var(--bg-app) !important;
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+  padding: 1.5rem;
+  margin: 20px 0;
 }
 </style>

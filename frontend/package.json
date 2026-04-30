@@ -21,7 +21,10 @@
     "@milkdown/preset-gfm": "^7.20.0",
     "@milkdown/theme-nord": "^7.0.0",
     "@milkdown/vue": "^7.20.0",
+    "@vicons/ionicons5": "^0.13.0",
     "d3": "^7.9.0",
+    "force-graph": "^1.51.4",
+    "naive-ui": "^2.44.1",
     "prismjs": "^1.30.0",
     "vue": "^3.2.0"
   },

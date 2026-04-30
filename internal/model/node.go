@@ -43,17 +43,20 @@ type Node struct {
 	UpdateTime int64 `json:"update_time" gorm:"autoUpdateTime"`
 }
 
+type NoteDoc struct {
+	Id      string `json:"id" `
+	Title   string `json:"title"`
+	Content string `json:"content"`
+}
+
 func (Node) TableName() string {
 	return "nodes"
 }
 
-type Relation struct {
-	FromID    string `gorm:"primaryKey;index" json:"fromId"`
-	ToID      string `gorm:"primaryKey;index" json:"toId"`
-	Type      string `gorm:"primaryKey;index" json:"type"` // contains, link, attach
-	CreatedAt int64  `gorm:"autoCreateTime:milli"`
-}
-
-func (Relation) TableName() string {
-	return "relations"
+// TreeNode 用于目录树结构
+type TreeNode struct {
+	ID       string      `json:"id"`
+	Name     string      `json:"name"`
+	Type     string      `json:"type"` // folder, note, user
+	Children []*TreeNode `json:"children,omitempty"`
 }

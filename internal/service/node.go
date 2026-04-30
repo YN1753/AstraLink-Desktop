@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,13 +17,14 @@ type NodeService struct {
 	base *repo.BaseRepo
 }
 
-func NewNodeService(baserepo *repo.BaseRepo) *NodeService {
+func NewNodeService(baseRepo *repo.BaseRepo) *NodeService {
 	return &NodeService{
-		base: baserepo,
+		base: baseRepo,
 	}
 }
 
 func (n *NodeService) MergeNode(req model.MergeNodeReq) (string, error) {
+	fmt.Printf("MergeNode received:%+v\n", req)
 	var node model.Node
 	node.ID = req.ID
 	node.Name = req.Name
@@ -45,7 +47,21 @@ func (n *NodeService) MergeNode(req model.MergeNodeReq) (string, error) {
 		node.Address = address
 	}
 
-	return n.base.MergeNode(&node)
+	if _, err := n.base.MergeNode(&node); err != nil {
+		return node.ID, err
+	}
+	if req.ParentID != "" {
+		relation := model.Relation{
+			FromID: req.ParentID,
+			ToID:   node.ID,
+			Type:   "link",
+		}
+		if err := n.base.CreateRelation(relation); err != nil {
+			return node.ID, err
+		}
+	}
+
+	return node.ID, nil
 }
 
 func (n *NodeService) GetNode(id string) (model.Node, error) {
@@ -61,9 +77,7 @@ func GetExt(base64Str string) string {
 		return ".bin"
 	}
 
-	// 找到 "image/" 之后的位置
 	start := len("data:image/")
-	// 找到分号 ";" 的位置（Data URL 格式：data:image/png;base64,
 	end := strings.Index(base64Str, ";")
 
 	if end == -1 || end <= start {
@@ -82,37 +96,32 @@ func GetExt(base64Str string) string {
 	}
 }
 func (n *NodeService) UpdateAvatar(id string, value string) (string, error) {
-	// 1. 查找 Base64 数据开始的位置（逗号后面）
+
 	commaIndex := strings.Index(value, ",")
 	if commaIndex == -1 {
 		return "", errors.New("无效的 Base64 数据")
 	}
 
-	// 2. 获取后缀名（使用你写的 GetExt）
-
 	ext := GetExt(value)
 	if ext == ".bin" {
 		return "", errors.New("不支持的图片格式")
 	}
-
-	// 3. 提取并解码纯 Base64 数据
 	pureBase64 := value[commaIndex+1:]
 	imageData, err := base64.StdEncoding.DecodeString(pureBase64)
 	if err != nil {
 		return "", errors.New("图片解码失败: " + err.Error())
 	}
-	// 4. 保存二进制流
+
 	path, err := n.base.SaveLocalFile("avatar", bytes.NewReader(imageData), id+ext)
 	if err != nil {
 		return "", errors.New("保存头像文件失败")
 	}
 
-	// 5. 更新数据库中的地址
 	return path, n.base.UpdateNodeInfo(id, "address", path)
 }
 
 func (n *NodeService) GetAvatar(id string) (string, error) {
-	// GetAvatar 读取头像文件并返回 base64
+
 	node, err := n.base.GetNodeById(id)
 	if err != nil {
 		return "", err
@@ -137,4 +146,104 @@ func (n *NodeService) GetAvatar(id string) (string, error) {
 		mimeType = "image/webp"
 	}
 	return "data:" + mimeType + ";base64," + base64.StdEncoding.EncodeToString(data), nil
+}
+
+func (n *NodeService) GetAllNotes() (*[]model.Node, error) {
+	return n.base.GetAllNotes()
+}
+
+func (n *NodeService) GetNodesByTitle(keyword string) (*[]model.Node, error) {
+	return n.base.GetNodesByTitle(keyword)
+}
+
+func (n *NodeService) GetNoteContent(id string) (string, error) {
+	return n.base.GetNoteContent(id)
+}
+
+// GetDirectoryTree 获取目录树结构
+func (n *NodeService) GetDirectoryTree() (*model.TreeNode, error) {
+	// 获取所有节点
+	allNodes, err := n.base.GetAllNotes()
+	if err != nil {
+		return nil, err
+	}
+
+	// 同时获取用户节点
+	userNodes, err := n.base.GetNodeByType("user")
+	if err != nil {
+		return nil, err
+	}
+
+	// 合并所有节点
+	all := append(*allNodes, *userNodes...)
+
+	// 构建 map
+	nodeMap := make(map[string]*model.TreeNode)
+	for i := range all {
+		nodeMap[all[i].ID] = &model.TreeNode{
+			ID:       all[i].ID,
+			Name:     all[i].Name,
+			Type:     all[i].Type,
+			Children: []*model.TreeNode{},
+		}
+	}
+
+	// 根节点
+	root := &model.TreeNode{
+		ID:       "root",
+		Name:     "root",
+		Type:     "folder",
+		Children: []*model.TreeNode{},
+	}
+
+	// 查找 Path 为 "root" 的用户节点，作为树的根
+	var rootUser *model.TreeNode
+	for _, node := range all {
+		if node.Path == "root" && node.Type == "user" {
+			rootUser = nodeMap[node.ID]
+			break
+		}
+	}
+
+	// 根据 Path 构建树
+	// Path 格式: root/parentId1/parentId2/nodeId
+	for _, node := range all {
+		// 跳过 root 本身和已经是根用户节点的
+		if node.Path == "root" || node.Path == "" {
+			continue
+		}
+
+		// 解析路径
+		parts := strings.Split(strings.Trim(node.Path, "/"), "/")
+		if len(parts) < 2 {
+			continue
+		}
+
+		// 最后一个是当前节点ID
+		nodeID := parts[len(parts)-1]
+		// 前一个是父节点ID
+		parentID := parts[len(parts)-2]
+
+		treeNode := nodeMap[nodeID]
+		if treeNode == nil {
+			continue
+		}
+
+		parentNode := nodeMap[parentID]
+		if parentNode != nil {
+			parentNode.Children = append(parentNode.Children, treeNode)
+		} else if rootUser != nil {
+			// 如果有根用户节点，挂在根用户节点下
+			rootUser.Children = append(rootUser.Children, treeNode)
+		} else {
+			// 父节点不在 map 中，挂在 root 下
+			root.Children = append(root.Children, treeNode)
+		}
+	}
+
+	// 如果存在根用户节点，返回根用户节点；否则返回默认 root
+	if rootUser != nil {
+		return rootUser, nil
+	}
+	return root, nil
 }

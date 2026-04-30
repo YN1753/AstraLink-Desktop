@@ -4,23 +4,27 @@ import (
 	"astralink/internal/model"
 	"errors"
 	"fmt"
+	"github.com/blevesearch/bleve/v2"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 	"io"
 	"os"
 	"path/filepath"
-
-	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 type BaseRepo struct {
-	SqlDb    *gorm.DB
-	BasePath string
+	SqlDb      *gorm.DB
+	BasePath   string
+	BleveIndex bleve.Index
 }
+
+// 创建索引（第一次会自动创建）
 
 func NewBaseRepo(db *gorm.DB, path string) *BaseRepo {
 	return &BaseRepo{
 		SqlDb:    db,
 		BasePath: path,
+		//BleveIndex: bleve,
 	}
 }
 
@@ -95,3 +99,64 @@ func (b *BaseRepo) GetNodeByType(nodeType string) (*[]model.Node, error) {
 func (b *BaseRepo) UpdateNodeInfo(id string, tab string, value string) error {
 	return b.SqlDb.Model(&model.Node{}).Where("id = ?", id).UpdateColumn(tab, value).Error
 }
+
+func (b *BaseRepo) CreateRelation(req model.Relation) error {
+	return b.SqlDb.Create(&req).Error
+}
+
+func (b *BaseRepo) GetAllNotes() (*[]model.Node, error) {
+	var nodes []model.Node
+	err := b.SqlDb.Where("type = ?", "note").Find(&nodes).Error
+	return &nodes, err
+}
+
+func (b *BaseRepo) GetNodesByTitle(keyword string) (*[]model.Node, error) {
+	var nodes []model.Node
+	err := b.SqlDb.Where("type = ? AND name LIKE ?", "note", "%"+keyword+"%").Find(&nodes).Error
+	return &nodes, err
+}
+
+func (b *BaseRepo) GetAllRelations() (*[]model.Relation, error) {
+	var relations []model.Relation
+	err := b.SqlDb.Find(&relations).Error
+	if err != nil {
+		return &[]model.Relation{}, nil
+	}
+	return &relations, nil
+}
+
+func (b *BaseRepo) GetRelationsByFromID(fromID string) (*[]model.Relation, error) {
+	var relations []model.Relation
+	err := b.SqlDb.Where("from_id = ?", fromID).Find(&relations).Error
+	if err != nil {
+		return &[]model.Relation{}, nil
+	}
+	return &relations, err
+}
+
+func (b *BaseRepo) GetRelationsByToID(toID string) (*[]model.Relation, error) {
+	var relations []model.Relation
+	err := b.SqlDb.Where("to_id = ?", toID).Find(&relations).Error
+	if err != nil {
+		return &[]model.Relation{}, nil
+	}
+	return &relations, err
+}
+
+func (b *BaseRepo) GetNoteContent(id string) (string, error) {
+	node, err := b.GetNodeById(id)
+	if err != nil {
+		return "", err
+	}
+	if node.Address == "" {
+		return "", nil
+	}
+	data, err := os.ReadFile(node.Address)
+	return string(data), err
+}
+
+//
+//func (b *BaseRepo) CreateIndex(req model.NoteDoc) error {
+//	return b.BleveIndex.Index(req.Id, req)
+//
+//}

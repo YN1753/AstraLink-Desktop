@@ -12,6 +12,9 @@ import (
 	"astralink/internal/service"
 )
 
+// Injectors from wire.go:
+
+// InitializeApp 依赖注入入口
 func InitializeApp(basePath string) (*App, error) {
 	gormDB, err := db.InitDB(basePath)
 	if err != nil {
@@ -19,6 +22,7 @@ func InitializeApp(basePath string) (*App, error) {
 	}
 	baseRepo := repo.NewBaseRepo(gormDB, basePath)
 	nodeService := service.NewNodeService(baseRepo)
-	app := NewApp(baseRepo, nodeService)
+	relationService := service.NewRelationService(baseRepo)
+	app := NewApp(baseRepo, nodeService, relationService)
 	return app, nil
 }

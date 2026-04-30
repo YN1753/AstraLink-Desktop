@@ -23,4 +23,13 @@ frontend/node_modules/
 Thumbs.db
 
 # Wails build artifacts
-frontend/wailsjs/go/main/App.js
+build/
+
+# Auto-generated bindings (regenerate with: wails update bindings)
+frontend/wailsjs/
+
+# Root package-lock (not needed - Go project)
+package-lock.json
+Bleve教程.md
+功能规划.md
+.claude

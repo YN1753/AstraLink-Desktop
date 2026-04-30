@@ -9,15 +9,17 @@ import (
 )
 
 type App struct {
-	ctx         context.Context
-	SqliteRepo  *repo.BaseRepo
-	NodeService *service.NodeService
+	ctx             context.Context
+	SqliteRepo      *repo.BaseRepo
+	NodeService     *service.NodeService
+	RelationService *service.RelationService
 }
 
-func NewApp(r *repo.BaseRepo, n *service.NodeService) *App {
+func NewApp(r *repo.BaseRepo, n *service.NodeService, re *service.RelationService) *App {
 	return &App{
-		SqliteRepo:  r,
-		NodeService: n,
+		SqliteRepo:      r,
+		NodeService:     n,
+		RelationService: re,
 	}
 }
 
@@ -43,4 +45,37 @@ func (a *App) UpdateAvatar(id string, value string) (string, error) {
 }
 func (a *App) GetAvatar(id string) (string, error) {
 	return a.NodeService.GetAvatar(id)
+}
+
+func (a *App) CreateRelation(req model.Relation) error {
+
+	return a.RelationService.CreateRelation(req)
+}
+
+func (a *App) GetAllNotes() (*[]model.Node, error) {
+	return a.NodeService.GetAllNotes()
+}
+
+func (a *App) GetNotesByTitle(keyword string) (*[]model.Node, error) {
+	return a.NodeService.GetNodesByTitle(keyword)
+}
+
+func (a *App) GetNoteContent(id string) (string, error) {
+	return a.NodeService.GetNoteContent(id)
+}
+
+func (a *App) GetAllRelations() (*[]model.Relation, error) {
+	return a.RelationService.GetAllRelations()
+}
+
+func (a *App) GetOutgoingLinks(noteID string) (*[]model.Relation, error) {
+	return a.RelationService.GetOutgoingLinks(noteID)
+}
+
+func (a *App) GetBacklinks(noteID string) (*[]model.Relation, error) {
+	return a.RelationService.GetBacklinks(noteID)
+}
+
+func (a *App) GetDirectoryTree() (*model.TreeNode, error) {
+	return a.NodeService.GetDirectoryTree()
 }
