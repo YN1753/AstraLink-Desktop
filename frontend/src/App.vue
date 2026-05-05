@@ -6,12 +6,15 @@ import EditorView from './components/EditorView.vue'
 import GalaxyView from './components/GalaxyView.vue'
 import SettingsView from './components/SettingsView.vue'
 import SearchView from './components/SearchView.vue'
-import { GetNodeByType, CreateNewNode, UpdateAvatar, GetAvatar } from '../wailsjs/go/main/App'
+import { CheckUserNode, MergeUserInfo, GetAvatar, UploadAvatar, GetDataSpace, GetTagCount, GetNoteCount, GetGalaxyCount, GetAllTag } from '../wailsjs/go/main/App'
 
 const currentView = ref('home')
+const previousView = ref('home')
 const showSettings = ref(false)
 const showSearch = ref(false)
 const systemStatus = ref('READY')
+const editingNoteId = ref(null)
+const newNoteRequest = ref(0)
 
 // 6种主题配置
 const themes = [
@@ -29,8 +32,13 @@ const config = ref({
   font: localStorage.getItem('font') || 'Inter'
 })
 
-// 用户信息
-const user = ref({ id: '', username: 'VOYAGER', motto: '书写有序的人生', avatar: '' })
+// 用户信息（从 localStorage 恢复 ID）
+const user = ref({
+  id: localStorage.getItem('userId') || '',
+  username: 'VOYAGER',
+  motto: '书写有序的人生',
+  avatar: ''
+})
 
 // 存储统计
 const stats = ref({
@@ -40,14 +48,23 @@ const stats = ref({
   totalSize: 0
 })
 
-// 应用主题到CSS变量
+// 侧边栏状态
+const sidebarCollapsed = ref(localStorage.getItem('sidebarCollapsed') === 'true')
+const tags = ref([])
+const recentNotes = ref(JSON.parse(localStorage.getItem('recentNotes') || '[]'))
+
+// 最近笔记追踪
+function trackRecentNote(noteId, noteName) {
+  if (!noteId) return
+  recentNotes.value = recentNotes.value.filter(n => n.id !== noteId)
+  recentNotes.value.unshift({ id: noteId, name: noteName || '未命名', timestamp: Date.now() })
+  if (recentNotes.value.length > 10) recentNotes.value = recentNotes.value.slice(0, 10)
+  localStorage.setItem('recentNotes', JSON.stringify(recentNotes.value))
+}
+
+// 应用主题（CSS [data-theme] 选择器自动处理变量映射）
 function applyTheme(themeId) {
-  const theme = themes.find(t => t.id === themeId) || themes[0]
-  const root = document.documentElement
-  root.setAttribute('data-theme', themeId)
-  root.style.setProperty('--bg-app', theme.bg)
-  root.style.setProperty('--text-primary', theme.text)
-  root.style.setProperty('--accent', theme.accent)
+  document.documentElement.setAttribute('data-theme', themeId)
   localStorage.setItem('theme', themeId)
 }
 
@@ -56,12 +73,6 @@ function applyFont(fontId) {
   document.body.style.fontFamily = `'${fontId}', sans-serif`
   localStorage.setItem('font', fontId)
 }
-
-// 初始化主题和字体
-onMounted(() => {
-  applyTheme(config.value.theme)
-  applyFont(config.value.font)
-})
 
 // 监听主题变化
 watch(() => config.value.theme, (newTheme) => {
@@ -73,25 +84,10 @@ watch(() => config.value.font, (newFont) => {
   applyFont(newFont)
 })
 
-async function handleUpdateAvatar(base64Data) {
-  if (!user.value.id) return
-  try {
-    await UpdateAvatar(user.value.id, base64Data)
-    // 重新获取头像的 base64 数据
-    const avatarData = await GetAvatar(user.value.id)
-    if (avatarData) {
-      user.value = { ...user.value, avatar: avatarData }
-    }
-  } catch (e) {
-    console.error('更新头像失败:', e)
-  }
-}
-
 async function init() {
   try {
-    const nodes = await GetNodeByType('user')
-    if (nodes && nodes.length > 0) {
-      const userNode = nodes[0]
+    const userNode = await CheckUserNode()
+    if (userNode) {
       user.value = {
         id: userNode.id,
         username: userNode.name,
@@ -99,6 +95,9 @@ async function init() {
         avatar: userNode.address || '',
         others: userNode.others || {}
       }
+
+      // 持久化用户 ID
+      localStorage.setItem('userId', userNode.id)
 
       // 从数据库读取主题和字体配置
       if (userNode.others?.theme) {
@@ -116,34 +115,61 @@ async function init() {
             user.value.avatar = avatar
           }
         } catch (e) {}
+
+        // 加载统计数据
+        try {
+          const [noteCount, galaxyCount, tagCount, totalSize] = await Promise.all([
+            GetNoteCount(),
+            GetGalaxyCount(),
+            GetTagCount(),
+            GetDataSpace()
+          ])
+          stats.value = { noteCount, galaxyCount, tagCount, totalSize }
+        } catch (e) {}
+
+        // 加载标签
+        try {
+          const tagList = await GetAllTag()
+          tags.value = tagList || []
+        } catch (e) {}
       }
-    }
-    // 加载统计数据
-    const allNodes = await GetNodeByType('note')
-    if (allNodes) {
-      stats.value.noteCount = allNodes.length
-      stats.value.galaxyCount = new Set(allNodes.filter(n => n.others?.galaxy).size)
-      stats.value.tagCount = new Set(allNodes.flatMap(n => n.others?.tags || [])).size
     }
   } catch (e) {}
 }
 
-async function handleSaveNote({ title, content }) {
-  systemStatus.value = 'SAVING'
-  try {
-    await CreateNewNode({ id: "", name: title, type: "note", file: content, parentPath: "root", parentId: user.value.id, others: {} })
-    systemStatus.value = 'READY'
-    currentView.value = 'home'
-    // 刷新统计
-    init()
-  } catch (err) {}
+function openNoteById(noteId, noteName) {
+  trackRecentNote(noteId, noteName)
+  editingNoteId.value = noteId
+  if (currentView.value !== 'editor') {
+    previousView.value = currentView.value
+    currentView.value = 'editor'
+  }
+}
+
+function openNoteFromGalaxy(note) {
+  if (note && note.id) {
+    trackRecentNote(note.id, note.name)
+    editingNoteId.value = note.id
+    previousView.value = 'galaxy'
+    currentView.value = 'editor'
+  }
+}
+
+function handleSidebarNewNote() {
+  if (currentView.value === 'editor') {
+    newNoteRequest.value++
+  } else {
+    editingNoteId.value = null
+    previousView.value = 'home'
+    currentView.value = 'editor'
+  }
 }
 
 // 保存用户配置到数据库
 async function saveUserConfig() {
   if (!user.value.id) return
   try {
-    await CreateNewNode({
+    await MergeUserInfo({
       id: user.value.id,
       name: user.value.username,
       type: 'user',
@@ -161,6 +187,51 @@ async function saveUserConfig() {
   }
 }
 
+// 更新用户资料
+async function handleUpdateUser(updatedUser) {
+  user.value = updatedUser
+  try {
+    await MergeUserInfo({
+      id: updatedUser.id,
+      name: updatedUser.username,
+      type: 'user',
+      file: '',
+      parentPath: '',
+      others: {
+        ...updatedUser.others,
+        motto: updatedUser.motto
+      }
+    })
+  } catch (e) {
+    console.error('更新用户资料失败:', e)
+  }
+}
+
+// 编辑器保存回调
+function handleEditorSaved(savedNote) {
+  init()
+  if (savedNote?.id) {
+    trackRecentNote(savedNote.id, savedNote.name)
+  }
+}
+
+// 上传头像
+async function handleUpdateAvatar(base64Data) {
+  if (!user.value.id) return
+  try {
+    const path = await UploadAvatar(user.value.id, base64Data)
+    if (path) {
+      // 重新获取头像
+      const avatar = await GetAvatar(user.value.id)
+      if (avatar) {
+        user.value.avatar = avatar
+      }
+    }
+  } catch (e) {
+    console.error('上传头像失败:', e)
+  }
+}
+
 // 键盘快捷键
 function handleKeydown(e) {
   if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
@@ -174,6 +245,8 @@ function handleKeydown(e) {
 }
 
 onMounted(() => {
+  applyTheme(config.value.theme)
+  applyFont(config.value.font)
   init()
   window.addEventListener('keydown', handleKeydown)
 })
@@ -188,13 +261,13 @@ onUnmounted(() => {
     <div class="global-background"></div>
 
     <Sidebar
+        v-model="sidebarCollapsed"
         :user="user"
-        :stats="stats"
         :currentView="currentView"
-        :showSearch="showSearch"
-        @open-note="currentView = 'editor'"
+        :tags="tags"
+        :recentNotes="recentNotes"
+        @open-note="(note) => openNoteById(note.id, note.name)"
         @open-settings="showSettings = true"
-        @open-search="showSearch = true"
         @go-home="currentView = 'home'"
     />
 
@@ -203,22 +276,29 @@ onUnmounted(() => {
           v-if="currentView === 'home'"
           :user="user"
           :status="systemStatus"
-          @start-note="currentView = 'editor'"
+          :stats="stats"
+          :recentNotes="recentNotes"
+          @start-note="editingNoteId = null; previousView = 'home'; currentView = 'editor'"
           @enter-galaxy="currentView = 'galaxy'"
           @open-search="showSearch = true"
+          @open-note="openNoteById"
       />
 
       <GalaxyView
           v-else-if="currentView === 'galaxy'"
           :user="user"
           @back="currentView = 'home'"
+          @open-note="openNoteFromGalaxy"
       />
 
       <EditorView
           v-else-if="currentView === 'editor'"
           :status="systemStatus"
-          @back="currentView = 'home'"
-          @save="handleSaveNote"
+          :noteId="editingNoteId"
+          :user="user"
+          :newNoteRequest="newNoteRequest"
+          @back="editingNoteId = null; currentView = previousView"
+          @saved="handleEditorSaved"
       />
     </main>
 
@@ -228,7 +308,7 @@ onUnmounted(() => {
         :config="config"
         :themes="themes"
         @close="showSettings = false"
-        @update-user="u => user = u"
+        @update-user="handleUpdateUser"
         @update-config="c => { config = c; saveUserConfig() }"
         @update-avatar="handleUpdateAvatar"
     />
@@ -237,7 +317,7 @@ onUnmounted(() => {
         v-if="showSearch"
         :user="user"
         @close="showSearch = false"
-        @open-note="currentView = 'editor'"
+        @open-note="(note) => { showSearch = false; openNoteById(note.id, note.name) }"
     />
   </div>
 </template>

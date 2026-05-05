@@ -1,4 +1,5 @@
 <script setup>
+import { onMounted, onUnmounted } from 'vue'
 import { Milkdown, useEditor } from '@milkdown/vue'
 import { Editor, rootCtx, defaultValueCtx } from '@milkdown/core'
 import { commonmark } from '@milkdown/preset-commonmark'
@@ -37,22 +38,26 @@ useEditor((root) => {
       .use(listener)
 }, [])
 
-// 监听滚动到行事件
-if (typeof window !== 'undefined') {
-  window.addEventListener('scroll-to-line', (e) => {
-    const { line } = e.detail
-    // 通过 DOM 操作滚动到对应行
-    setTimeout(() => {
-      const editor = document.querySelector('.ProseMirror')
-      if (editor) {
-        const lines = editor.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li')
-        if (lines[line]) {
-          lines[line].scrollIntoView({ behavior: 'smooth', block: 'start' })
-        }
+function onScrollToLine(e) {
+  const { line } = e.detail
+  setTimeout(() => {
+    const editor = document.querySelector('.ProseMirror')
+    if (editor) {
+      const lines = editor.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li')
+      if (lines[line]) {
+        lines[line].scrollIntoView({ behavior: 'smooth', block: 'start' })
       }
-    }, 100)
-  })
+    }
+  }, 100)
 }
+
+onMounted(() => {
+  window.addEventListener('scroll-to-line', onScrollToLine)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('scroll-to-line', onScrollToLine)
+})
 </script>
 
 <template>

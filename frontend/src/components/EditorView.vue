@@ -2,10 +2,10 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import { MilkdownProvider } from '@milkdown/vue'
 import MilkdownCore from './MilkdownCore.vue'
-import { NTree, NInput, NButton, NPopover } from 'naive-ui'
+import { GetNoteContent, CreateNote, UpdateNoteContent } from '../../wailsjs/go/main/App'
 
-const props = defineProps(['status'])
-const emit = defineEmits(['save', 'back'])
+const props = defineProps(['status', 'noteId', 'user', 'newNoteRequest'])
+const emit = defineEmits(['saved', 'back'])
 
 // ==================== 多标签页 ====================
 const openTabs = ref([])
@@ -15,7 +15,7 @@ const tabCounter = ref(0)
 const currentTab = computed(() => openTabs.value.find(t => t.id === currentTabId.value))
 
 // 打开笔记（新建标签或切换）
-function openNote(note = null) {
+async function openNote(note = null) {
   if (!note) {
     // 新建空白笔记
     const id = `new-${++tabCounter.value}`
@@ -31,7 +31,17 @@ function openNote(note = null) {
     return
   }
 
-  openTabs.value.push({ id: note.id, name: note.name, content: note.content || '' })
+  // 从后端加载笔记内容
+  let content = note.content || ''
+  if (!content && note.id && !note.id.startsWith('new-')) {
+    try {
+      content = await GetNoteContent(note.id)
+    } catch (e) {
+      console.error('Failed to load note content:', e)
+    }
+  }
+
+  openTabs.value.push({ id: note.id, name: note.name, content, isNew: false })
   currentTabId.value = note.id
 }
 
@@ -47,17 +57,30 @@ function closeTab(id) {
   }
 
   if (openTabs.value.length === 0) {
-    emit('back')
+    goHome()
   }
 }
 
-// 初始打开一个空白标签
-onMounted(() => {
-  openNote()
+// 初始打开一个空白标签或加载指定笔记
+onMounted(async () => {
+  if (props.noteId) {
+    await openNote({ id: props.noteId, name: '' })
+  } else {
+    openNote()
+  }
 })
 
-// ==================== 侧边栏标签切换 ====================
-const sidebarTab = ref('outline')
+// 监听 noteId 变化
+watch(() => props.noteId, async (newId) => {
+  if (newId) {
+    await openNote({ id: newId, name: '' })
+  }
+})
+
+// 监听侧边栏"快速记录"请求（编辑器内新建空白标签）
+watch(() => props.newNoteRequest, () => {
+  openNote()
+})
 
 // ==================== 大纲视图 ====================
 const outline = computed(() => {
@@ -88,57 +111,6 @@ function scrollToHeading(line) {
   const event = new CustomEvent('scroll-to-line', { detail: { line } })
   window.dispatchEvent(event)
 }
-
-// ==================== 树形导航 ====================
-// 模拟笔记列表（用于树形导航）
-const mockNotes = [
-  { id: 'note-1', name: '项目笔记', content: '# 项目笔记\n\n这是项目相关的内容。' },
-  { id: 'note-2', name: 'Go学习笔记', content: '# Go学习笔记\n\n## 变量\n\n学习Go语言的基础。\n\n### 数据类型\n\n- string\n- int\n- bool' },
-  { id: 'note-3', name: '周报总结', content: '# 周报总结\n\n本周工作内容。' },
-  { id: 'note-4', name: '读书笔记', content: '# 读书笔记\n\n读《深入理解计算机系统》。' },
-]
-
-// 模拟树数据
-const treeData = ref([
-  {
-    key: 'root',
-    label: '📁 root',
-    children: [
-      {
-        key: 'root/work',
-        label: '📁 工作',
-        children: [
-          { key: 'note-1', label: '📄 项目笔记', isLeaf: true },
-          { key: 'note-3', label: '📄 周报总结', isLeaf: true },
-        ]
-      },
-      {
-        key: 'root/study',
-        label: '📁 学习',
-        children: [
-          { key: 'note-2', label: '📄 Go学习笔记', isLeaf: true },
-          { key: 'note-4', label: '📄 读书笔记', isLeaf: true },
-        ]
-      }
-    ]
-  }
-])
-
-const expandedKeys = ref(['root', 'root/work', 'root/study'])
-const selectedKey = ref(null)
-
-function onTreeSelect(keys) {
-  if (keys.length > 0) {
-    selectedKey.value = keys[0]
-    // 找到对应的笔记打开
-    const note = mockNotes.find(n => `note-${n.id}` === keys[0] || n.id === keys[0])
-    if (note) {
-      openNote({ id: note.id, name: note.name })
-    }
-  }
-}
-
-// ==================== 双链笔记 ====================
 // 内容双向绑定
 const currentContent = computed({
   get: () => currentTab.value?.content || '',
@@ -149,51 +121,9 @@ const currentContent = computed({
   }
 })
 
-const showLinkPicker = ref(false)
-const linkSearchQuery = ref('')
-const linkPickerPosition = ref({ top: 0, left: 0 })
-
-const filteredNotes = computed(() => {
-  const query = linkSearchQuery.value.toLowerCase()
-  if (!query) return mockNotes.slice(0, 5)
-  return mockNotes.filter(n => n.name.toLowerCase().includes(query)).slice(0, 5)
-})
-
-// 监听内容中的 [[ 触发链接选择器
 function onContentChange(content) {
   if (!currentTab.value) return
   currentTab.value.content = content
-
-  // 检测 [[ 触发链接选择器（简化实现）
-  const lastBracket = content.lastIndexOf('[[')
-  if (lastBracket !== -1) {
-    const afterBracket = content.slice(lastBracket + 2)
-    if (!afterBracket.includes(']]')) {
-      linkSearchQuery.value = afterBracket
-      showLinkPicker.value = true
-    }
-  } else {
-    showLinkPicker.value = false
-  }
-}
-
-function insertLink(noteName) {
-  if (!currentTab.value) return
-
-  const content = currentTab.value.content
-  const lastBracket = content.lastIndexOf('[[')
-
-  if (lastBracket !== -1) {
-    const before = content.slice(0, lastBracket)
-    const after = content.slice(lastBracket + 2)
-    const bracketIdx = after.indexOf(']]')
-    const finalAfter = bracketIdx !== -1 ? after.slice(bracketIdx + 2) : after
-
-    currentTab.value.content = `${before}[[${noteName}]]${finalAfter}`
-  }
-
-  showLinkPicker.value = false
-  linkSearchQuery.value = ''
 }
 
 // ==================== 保存 ====================
@@ -203,16 +133,38 @@ const extractTitle = (md) => {
   return match ? match[1].trim() : '未命名星谱'
 }
 
-const onSave = () => {
+async function onSave() {
   if (!currentTab.value) return
   const title = extractTitle(currentTab.value.content)
-  emit('save', { title, content: currentTab.value.content })
+  const content = currentTab.value.content
 
-  // 更新标签名
-  if (currentTab.value.isNew) {
+  try {
+    if (currentTab.value.id && !currentTab.value.id.startsWith('new-')) {
+      // 更新已有笔记
+      await UpdateNoteContent(currentTab.value.id, content)
+    } else {
+      // 创建新笔记并回写真实 ID
+      const newId = await CreateNote({
+        name: title, file: content,
+        parentPath: "root", parentId: props.user?.id || "", others: {}
+      })
+      if (newId) {
+        currentTab.value.id = newId
+      }
+    }
+    // 更新标签名
     currentTab.value.name = title
     currentTab.value.isNew = false
+    emit('saved', { id: currentTab.value.id, name: currentTab.value.name })
+  } catch (e) {
+    console.error('保存失败:', e)
   }
+}
+
+function goHome() {
+  openTabs.value = []
+  currentTabId.value = null
+  emit('back')
 }
 </script>
 
@@ -234,103 +186,47 @@ const onSave = () => {
       <button class="tab-add" @click="openNote()">+</button>
     </div>
 
-    <MilkdownProvider>
-      <div class="editor-shell">
-        <header class="editor-header">
-          <div class="header-left">
-            <button class="back-link" @click="$emit('back')">← 退出 / EXIT</button>
+    <div class="editor-shell">
+      <header class="editor-header">
+        <div class="header-left">
+          <button class="back-link" @click="goHome">← 退出 / EXIT</button>
+        </div>
+        <div class="header-right">
+          <div class="status-box">
+            <span class="dot"></span>
+            {{ status }} / ASTRALINK_READY
           </div>
-          <div class="header-right">
-            <div class="status-box">
-              <span class="dot"></span>
-              {{ status }} / ASTRALINK_READY
+          <button class="sync-btn" @click="onSave">同步星链 / SYNC</button>
+        </div>
+      </header>
+
+      <div class="editor-main">
+        <!-- 侧边栏：大纲 -->
+        <aside class="editor-sidebar">
+          <div class="sidebar-section">
+            <div class="outline-list">
+              <div
+                v-for="(item, idx) in outline"
+                :key="idx"
+                :class="['outline-item', `level-${item.level}`]"
+                :style="{ paddingLeft: `${(item.level - 1) * 12 + 10}px` }"
+                @click="scrollToHeading(item.line)"
+              >
+                {{ item.text }}
+              </div>
+              <div v-if="outline.length === 0" class="outline-empty">暂无标题</div>
             </div>
-            <button class="sync-btn" @click="onSave">同步星链 / SYNC</button>
           </div>
-        </header>
+        </aside>
 
-        <div class="editor-main">
-          <!-- 侧边栏：标签切换（大纲/文件树） -->
-          <aside class="editor-sidebar">
-            <div class="sidebar-tabs">
-              <div
-                class="sidebar-tab"
-                :class="{ active: sidebarTab === 'outline' }"
-                @click="sidebarTab = 'outline'"
-              >
-                📑 大纲
-              </div>
-              <div
-                class="sidebar-tab"
-                :class="{ active: sidebarTab === 'tree' }"
-                @click="sidebarTab = 'tree'"
-              >
-                📂 文件
-              </div>
-            </div>
-
-            <!-- 大纲视图 -->
-            <div v-show="sidebarTab === 'outline'" class="sidebar-section">
-              <div class="outline-list">
-                <div
-                  v-for="(item, idx) in outline"
-                  :key="idx"
-                  :class="['outline-item', `level-${item.level}`]"
-                  :style="{ paddingLeft: `${(item.level - 1) * 12 + 10}px` }"
-                  @click="scrollToHeading(item.line)"
-                >
-                  {{ item.text }}
-                </div>
-                <div v-if="outline.length === 0" class="outline-empty">暂无标题</div>
-              </div>
-            </div>
-
-            <!-- 树形导航 -->
-            <div v-show="sidebarTab === 'tree'" class="sidebar-section">
-              <NTree
-                :data="treeData"
-                :default-expanded-keys="expandedKeys"
-                :selected-keys="selectedKey ? [selectedKey] : []"
-                block-line
-                selectable
-                @update:selected-keys="onTreeSelect"
-              />
-            </div>
-          </aside>
-
-          <!-- 编辑器内容 -->
-          <div class="editor-scroll-area">
+        <!-- 编辑器内容 -->
+        <div class="editor-scroll-area">
+          <MilkdownProvider>
             <MilkdownCore v-model="currentContent" @update:modelValue="onContentChange" />
-
-            <!-- 双链选择器 -->
-            <Transition name="fade">
-              <div v-if="showLinkPicker" class="link-picker glass-panel">
-                <div class="link-picker-header">插入链接</div>
-                <NInput
-                  v-model:value="linkSearchQuery"
-                  placeholder="搜索笔记..."
-                  size="small"
-                  autofocus
-                />
-                <div class="link-picker-list">
-                  <div
-                    v-for="note in filteredNotes"
-                    :key="note.id"
-                    class="link-picker-item"
-                    @click="insertLink(note.name)"
-                  >
-                    📄 {{ note.name }}
-                  </div>
-                  <div v-if="filteredNotes.length === 0" class="link-picker-empty">
-                    未找到笔记
-                  </div>
-                </div>
-              </div>
-            </Transition>
-          </div>
+          </MilkdownProvider>
         </div>
       </div>
-    </MilkdownProvider>
+    </div>
   </div>
 </template>
 
@@ -615,54 +511,6 @@ const onSave = () => {
 
 .editor-scroll-area::-webkit-scrollbar { width: 4px; }
 .editor-scroll-area::-webkit-scrollbar-thumb { background: var(--glass-border); }
-
-/* 双链选择器 */
-.link-picker {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: min(300px, 80vw);
-  max-height: min(350px, 60vh);
-  border-radius: clamp(8px, 1.5vw, 12px);
-  padding: clamp(10px, 2vw, 15px);
-  z-index: 50;
-  overflow: hidden;
-}
-
-.link-picker-header {
-  font-size: 12px;
-  color: var(--text-secondary);
-  margin-bottom: 10px;
-  letter-spacing: 1px;
-}
-
-.link-picker-list {
-  margin-top: 10px;
-  max-height: 250px;
-  overflow-y: auto;
-}
-
-.link-picker-item {
-  padding: 10px 12px;
-  border-radius: 6px;
-  font-size: 13px;
-  color: var(--text-primary);
-  cursor: pointer;
-  transition: 0.2s;
-}
-
-.link-picker-item:hover {
-  background: rgba(59, 130, 246, 0.15);
-}
-
-.link-picker-empty {
-  text-align: center;
-  color: var(--text-secondary);
-  font-size: 12px;
-  padding: 20px;
-  opacity: 0.6;
-}
 
 /* 动画 */
 .fade-enter-active, .fade-leave-active {

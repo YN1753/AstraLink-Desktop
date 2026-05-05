@@ -1,22 +1,6 @@
 <script setup>
-import { ref } from 'vue'
-
-defineProps(['user', 'status'])
-const emit = defineEmits(['start-note', 'enter-galaxy', 'open-search'])
-
-// 模拟最近笔记
-const recentNotes = ref([
-  { id: 'note-1', name: '项目笔记', updatedAt: '2小时前' },
-  { id: 'note-2', name: 'Go学习笔记', updatedAt: '1天前' },
-  { id: 'note-3', name: '周报总结', updatedAt: '3天前' },
-])
-
-// 模拟统计数据
-const stats = ref({
-  totalNotes: 12,
-  totalLinks: 28,
-  totalStars: 156
-})
+defineProps(['user', 'status', 'stats', 'recentNotes'])
+const emit = defineEmits(['start-note', 'enter-galaxy', 'open-search', 'open-note'])
 </script>
 
 <template>
@@ -52,18 +36,23 @@ const stats = ref({
       <!-- 统计数据 -->
       <div class="stats-row">
         <div class="stat-item">
-          <span class="stat-num">{{ stats.totalNotes }}</span>
+          <span class="stat-num">{{ stats?.noteCount || 0 }}</span>
           <span class="stat-label">笔记</span>
         </div>
         <div class="stat-divider"></div>
         <div class="stat-item">
-          <span class="stat-num">{{ stats.totalLinks }}</span>
-          <span class="stat-label">双向链接</span>
+          <span class="stat-num">{{ stats?.galaxyCount || 0 }}</span>
+          <span class="stat-label">星系</span>
         </div>
         <div class="stat-divider"></div>
         <div class="stat-item">
-          <span class="stat-num">{{ stats.totalStars }}</span>
-          <span class="stat-label">收藏</span>
+          <span class="stat-num">{{ stats?.tagCount || 0 }}</span>
+          <span class="stat-label">标签</span>
+        </div>
+        <div class="stat-divider"></div>
+        <div class="stat-item">
+          <span class="stat-num">{{ ((stats?.totalSize || 0) / 1024 / 1024).toFixed(1) }}</span>
+          <span class="stat-label">MB</span>
         </div>
       </div>
 
@@ -72,14 +61,17 @@ const stats = ref({
         <div class="section-title">最近编辑</div>
         <div class="recent-list">
           <div
-            v-for="note in recentNotes"
+            v-for="note in (recentNotes || [])"
             :key="note.id"
             class="recent-item"
+            @click="$emit('open-note', note.id, note.name)"
           >
             <span class="note-icon">📄</span>
             <span class="note-name">{{ note.name }}</span>
-            <span class="note-time">{{ note.updatedAt }}</span>
           </div>
+        </div>
+        <div v-if="!recentNotes || recentNotes.length === 0" class="recent-empty">
+          暂无笔记，开始创作吧
         </div>
       </div>
     </div>
@@ -98,6 +90,8 @@ const stats = ref({
 .hero-box {
   text-align: center;
   max-width: min(600px, 90vw);
+  padding: 0 clamp(10px, 3vw, 20px);
+  box-sizing: border-box;
 }
 
 .badge {
@@ -121,7 +115,7 @@ const stats = ref({
 .dot.saving { background: #eab308; }
 
 .title {
-  font-size: clamp(48px, 12vw, 100px);
+  font-size: clamp(32px, 10vw, 100px);
   font-weight: 100;
   margin: 0;
   letter-spacing: clamp(-2px, -0.3vw, -4px);
@@ -129,6 +123,7 @@ const stats = ref({
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
+  word-break: break-word;
 }
 
 .motto {
@@ -141,14 +136,14 @@ const stats = ref({
 
 /* 搜索框 */
 .search-bar {
-  margin-top: clamp(20px, 5vw, 40px);
-  padding: clamp(10px, 2vw, 15px) clamp(15px, 3vw, 25px);
+  margin-top: clamp(16px, 4vw, 40px);
+  padding: clamp(8px, 1.5vw, 15px) clamp(12px, 2.5vw, 25px);
   background: var(--glass-bg);
   border: 1px solid var(--glass-border);
   border-radius: 12px;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   cursor: pointer;
   transition: 0.3s;
   max-width: 450px;
@@ -162,20 +157,22 @@ const stats = ref({
 }
 
 .search-icon { font-size: 14px; opacity: 0.5; }
-.search-placeholder { flex: 1; text-align: left; font-size: 14px; color: var(--text-secondary); }
+.search-placeholder { flex: 1; text-align: left; font-size: clamp(11px, 1.5vw, 14px); color: var(--text-secondary); }
 .search-shortcut {
   font-size: 11px;
   color: var(--text-secondary);
   background: rgba(255, 255, 255, 0.05);
   padding: 3px 8px;
   border-radius: 4px;
+  display: none;
 }
 
 .actions {
-  margin-top: clamp(20px, 5vw, 40px);
+  margin-top: clamp(16px, 4vw, 40px);
   display: flex;
-  gap: clamp(10px, 2vw, 15px);
+  gap: clamp(8px, 1.5vw, 15px);
   justify-content: center;
+  flex-wrap: wrap;
 }
 
 .btn-main {
@@ -211,11 +208,11 @@ const stats = ref({
 
 /* 统计 */
 .stats-row {
-  margin-top: clamp(30px, 6vw, 50px);
+  margin-top: clamp(20px, 4vw, 50px);
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: clamp(15px, 4vw, 30px);
+  gap: clamp(12px, 3vw, 30px);
 }
 
 .stat-item {
@@ -245,13 +242,14 @@ const stats = ref({
 
 /* 最近笔记 */
 .recent-section {
-  margin-top: clamp(30px, 6vw, 50px);
+  margin-top: clamp(20px, 4vw, 50px);
   text-align: left;
-  padding: 20px 25px;
   background: var(--glass-bg);
   border: 1px solid var(--glass-border);
   border-radius: clamp(8px, 1.5vw, 12px);
-  padding: clamp(12px, 2vw, 20px) clamp(15px, 3vw, 25px);
+  padding: clamp(12px, 2vw, 20px) clamp(12px, 2.5vw, 25px);
+  max-height: 200px;
+  overflow-y: auto;
 }
 
 .section-title {
@@ -285,4 +283,12 @@ const stats = ref({
 .note-icon { font-size: clamp(12px, 1.8vw, 14px); }
 .note-name { flex: 1; font-size: clamp(11px, 1.5vw, 13px); color: var(--text-primary); }
 .note-time { font-size: clamp(9px, 1.3vw, 11px); color: var(--text-secondary); opacity: 0.6; }
+
+.recent-empty {
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: clamp(10px, 1.4vw, 12px);
+  opacity: 0.5;
+  padding: 20px;
+}
 </style>

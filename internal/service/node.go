@@ -6,7 +6,6 @@ import (
 	"astralink/pkg/utils"
 	"bytes"
 	"encoding/base64"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -23,105 +22,78 @@ func NewNodeService(baseRepo *repo.BaseRepo) *NodeService {
 	}
 }
 
-func (n *NodeService) MergeNode(req model.MergeNodeReq) (string, error) {
-	fmt.Printf("MergeNode received:%+v\n", req)
+func (n *NodeService) CheckUserNode() (*model.Node, error) { //检测用户是否存在，用于初始化
+	nodesPtr, err := n.base.GetNodeByType("user")
+	if err == nil && nodesPtr != nil && len(*nodesPtr) > 0 {
+		return &((*nodesPtr)[0]), nil
+	}
+	newNode := &model.Node{
+		ID:   utils.GenerateV7UID(),
+		Path: "root",
+		Type: "user",
+		Others: model.JSONMap{
+			"motto": "在星辰间寻找逻辑",
+		},
+	}
+	id, err := n.base.MergeNode(newNode)
+	if err != nil {
+		return nil, err
+	}
+	newNode.ID = id
+	return newNode, nil
+}
+
+func (n *NodeService) MergeUserInfo(req model.MergeNodeReq) (string, error) { //更新用户信息
 	var node model.Node
 	node.ID = req.ID
 	node.Name = req.Name
-	node.Type = req.Type
+	node.Type = "user"
 	node.Others = req.Others
 	if node.ID == "" {
 		node.ID = utils.GenerateV7UID()
 	}
-	parentPath := strings.TrimSuffix(strings.TrimSpace(req.ParentPath), "/")
-	node.Path = parentPath + "/" + node.ID
-	switch node.Type {
-	case "user":
-		node.Path = "root"
-	case "note":
-		file := strings.NewReader(req.File)
-		address, err := n.base.SaveLocalFile("notes", file, node.ID+".md")
-		if err != nil {
-			return node.ID, err
-		}
-		node.Address = address
-	}
-
-	if _, err := n.base.MergeNode(&node); err != nil {
-		return node.ID, err
-	}
-	if req.ParentID != "" {
-		relation := model.Relation{
-			FromID: req.ParentID,
-			ToID:   node.ID,
-			Type:   "link",
-		}
-		if err := n.base.CreateRelation(relation); err != nil {
-			return node.ID, err
-		}
-	}
-
-	return node.ID, nil
+	node.Path = "root"
+	return n.base.MergeNode(&node)
 }
 
-func (n *NodeService) GetNode(id string) (model.Node, error) {
-	return n.base.GetNodeById(id)
+func (n *NodeService) GetUserInfo(userID string) (model.Node, error) { //获取个人资料
+	return n.base.GetNodeById(userID)
 }
-
-func (n *NodeService) GetNodeByType(nodeType string) (*[]model.Node, error) {
-	node, err := n.base.GetNodeByType(nodeType)
-	return node, err
-}
-func GetExt(base64Str string) string {
-	if !strings.HasPrefix(base64Str, "data:image/") {
-		return ".bin"
+func (n *NodeService) UploadAvatar(id string, avatar string) (string, error) {
+	// 解析数据 URL: "data:image/png;base64,..."
+	commaIdx := strings.Index(avatar, ",")
+	if commaIdx == -1 {
+		return "", fmt.Errorf("invalid data URL")
 	}
 
-	start := len("data:image/")
-	end := strings.Index(base64Str, ";")
-
-	if end == -1 || end <= start {
-		return ".bin"
+	// 从 header 提取 MIME 类型并转换为扩展名
+	header := avatar[:commaIdx]
+	ext := ".jpg"
+	if strings.Contains(header, "image/png") {
+		ext = ".png"
+	} else if strings.Contains(header, "image/svg") {
+		ext = ".svg"
+	} else if strings.Contains(header, "image/webp") {
+		ext = ".webp"
 	}
 
-	ext := base64Str[start:end]
-
-	switch ext {
-	case "jpeg":
-		return ".jpg"
-	case "svg+xml":
-		return ".svg"
-	default:
-		return "." + ext
-	}
-}
-func (n *NodeService) UpdateAvatar(id string, value string) (string, error) {
-
-	commaIndex := strings.Index(value, ",")
-	if commaIndex == -1 {
-		return "", errors.New("无效的 Base64 数据")
-	}
-
-	ext := GetExt(value)
-	if ext == ".bin" {
-		return "", errors.New("不支持的图片格式")
-	}
-	pureBase64 := value[commaIndex+1:]
-	imageData, err := base64.StdEncoding.DecodeString(pureBase64)
+	// 解码 base64 数据
+	data, err := base64.StdEncoding.DecodeString(avatar[commaIdx+1:])
 	if err != nil {
-		return "", errors.New("图片解码失败: " + err.Error())
+		return "", fmt.Errorf("base64 decode failed: %v", err)
 	}
 
-	path, err := n.base.SaveLocalFile("avatar", bytes.NewReader(imageData), id+ext)
+	path, err := n.base.SaveLocalFile("avatar", bytes.NewReader(data), id+ext)
 	if err != nil {
-		return "", errors.New("保存头像文件失败")
+		return "", err
 	}
-
-	return path, n.base.UpdateNodeInfo(id, "address", path)
+	err = n.base.UpdateNodeInfo(id, "address", path)
+	if err != nil {
+		return "", err
+	}
+	return path, nil
 }
-
-func (n *NodeService) GetAvatar(id string) (string, error) {
-
+func (n *NodeService) GetAvatar(id string) (string, error) { //获取头像
 	node, err := n.base.GetNodeById(id)
 	if err != nil {
 		return "", err
@@ -148,102 +120,146 @@ func (n *NodeService) GetAvatar(id string) (string, error) {
 	return "data:" + mimeType + ";base64," + base64.StdEncoding.EncodeToString(data), nil
 }
 
-func (n *NodeService) GetAllNotes() (*[]model.Node, error) {
-	return n.base.GetAllNotes()
+func (n *NodeService) GetDataSpace() (int64, error) { //获取占用空间大小
+	return utils.GetStorageSize(n.base.GetRootPath())
 }
 
-func (n *NodeService) GetNodesByTitle(keyword string) (*[]model.Node, error) {
-	return n.base.GetNodesByTitle(keyword)
+func (n *NodeService) GetTagCount() (int64, error) { //获取tag个数
+	return n.base.CountNodesByType("tag")
 }
 
-func (n *NodeService) GetNoteContent(id string) (string, error) {
+func (n *NodeService) GetNoteCount() (int64, error) { //获取节点个数
+	return n.base.CountNodesByType("note")
+}
+
+func (n *NodeService) GetGalaxyCount() (int64, error) { //获取星系个数
+	return n.base.CountNodesByType("galaxy")
+}
+
+func (n *NodeService) CreateTag(req model.CreateTagReq) (string, error) { //创建tag
+	node := model.Node{
+		ID:     utils.GenerateV7UID(),
+		Name:   req.Name,
+		Type:   "tag",
+		Others: req.Others,
+	}
+
+	id, err := n.base.MergeNode(&node)
+	if err != nil {
+		return id, err
+	}
+	if req.ParentID != "" {
+		if err := n.base.UpsertRelation(model.Relation{FromID: req.ParentID, ToID: id, Type: "tag"}); err != nil {
+			return id, err
+		}
+	}
+	return id, nil
+}
+
+func (n *NodeService) CreateNote(req model.CreateNoteReq) (string, error) { //创建笔记
+	node := model.Node{
+		ID:     utils.GenerateV7UID(),
+		Name:   req.Name,
+		Type:   "note",
+		Others: req.Others,
+	}
+	//保存笔记
+	if req.File != "" {
+		file := strings.NewReader(req.File)
+		address, err := n.base.SaveLocalFile("notes", file, node.ID+".md")
+		if err != nil {
+			return node.ID, err
+		}
+		node.Address = address
+	}
+	//更新逻辑路径
+	parentPath := strings.TrimSuffix(strings.TrimSpace(req.ParentPath), "/")
+	if parentPath == "" {
+		parentPath = "root"
+	}
+	node.Path = parentPath + "/" + node.ID
+
+	id, err := n.base.MergeNode(&node)
+	if err != nil {
+		return id, err
+	}
+	//创建逻辑
+	if req.ParentID != "" {
+		if err := n.base.UpsertRelation(model.Relation{FromID: req.ParentID, ToID: id, Type: "note"}); err != nil {
+			return id, err
+		}
+	}
+
+	return id, nil
+}
+
+func (n *NodeService) CreateGalaxy(req model.MergeNodeReq) (string, error) { //创建星系
+	node := model.Node{
+		ID:     utils.GenerateV7UID(),
+		Name:   req.Name,
+		Type:   "galaxy",
+		Others: req.Others,
+	}
+	if req.ID != "" {
+		node.ID = req.ID
+	}
+
+	parentPath := strings.TrimSuffix(strings.TrimSpace(req.ParentPath), "/")
+	if parentPath == "" {
+		parentPath = "root"
+	}
+	node.Path = parentPath + "/" + node.ID
+
+	id, err := n.base.MergeNode(&node)
+	if err != nil {
+		return id, err
+	}
+
+	if req.ParentID != "" {
+		if err := n.base.UpsertRelation(model.Relation{FromID: req.ParentID, ToID: id, Type: "galaxy"}); err != nil {
+			return id, err
+		}
+	}
+
+	return id, nil
+}
+func (n *NodeService) GetNodeByPath(path string) ([]model.Node, error) {
+	var nodes []model.Node
+	err := n.base.SqlDb.Where("path LIKE ?", path+"%").Find(&nodes).Error
+	return nodes, err
+}
+func (n *NodeService) DeleteNode(id string) error { //删除节点包括本地文件和关系
+	node, err := n.base.GetNodeById(id)
+	if err != nil {
+		return err
+	}
+
+	if node.Type == "note" && node.Address != "" {
+		os.Remove(node.Address)
+	} else if node.Type == "user" && node.Address != "" {
+		os.Remove(node.Address)
+	}
+
+	if err := n.base.DeleteRelationsByNodeID(id); err != nil {
+		return err
+	}
+
+	return n.base.DeleteNodeById(id)
+}
+
+func (n *NodeService) GetAllTag() (*[]model.Node, error) { //获取所有tag
+	tags, err := n.base.GetNodeByType("tag")
+	if err != nil {
+		return nil, err
+	}
+	return tags, nil
+}
+func (n *NodeService) GetNoteContent(id string) (string, error) { //获取笔记context
 	return n.base.GetNoteContent(id)
 }
 
-// GetDirectoryTree 获取目录树结构
-func (n *NodeService) GetDirectoryTree() (*model.TreeNode, error) {
-	// 获取所有节点
-	allNodes, err := n.base.GetAllNotes()
-	if err != nil {
-		return nil, err
-	}
-
-	// 同时获取用户节点
-	userNodes, err := n.base.GetNodeByType("user")
-	if err != nil {
-		return nil, err
-	}
-
-	// 合并所有节点
-	all := append(*allNodes, *userNodes...)
-
-	// 构建 map
-	nodeMap := make(map[string]*model.TreeNode)
-	for i := range all {
-		nodeMap[all[i].ID] = &model.TreeNode{
-			ID:       all[i].ID,
-			Name:     all[i].Name,
-			Type:     all[i].Type,
-			Children: []*model.TreeNode{},
-		}
-	}
-
-	// 根节点
-	root := &model.TreeNode{
-		ID:       "root",
-		Name:     "root",
-		Type:     "folder",
-		Children: []*model.TreeNode{},
-	}
-
-	// 查找 Path 为 "root" 的用户节点，作为树的根
-	var rootUser *model.TreeNode
-	for _, node := range all {
-		if node.Path == "root" && node.Type == "user" {
-			rootUser = nodeMap[node.ID]
-			break
-		}
-	}
-
-	// 根据 Path 构建树
-	// Path 格式: root/parentId1/parentId2/nodeId
-	for _, node := range all {
-		// 跳过 root 本身和已经是根用户节点的
-		if node.Path == "root" || node.Path == "" {
-			continue
-		}
-
-		// 解析路径
-		parts := strings.Split(strings.Trim(node.Path, "/"), "/")
-		if len(parts) < 2 {
-			continue
-		}
-
-		// 最后一个是当前节点ID
-		nodeID := parts[len(parts)-1]
-		// 前一个是父节点ID
-		parentID := parts[len(parts)-2]
-
-		treeNode := nodeMap[nodeID]
-		if treeNode == nil {
-			continue
-		}
-
-		parentNode := nodeMap[parentID]
-		if parentNode != nil {
-			parentNode.Children = append(parentNode.Children, treeNode)
-		} else if rootUser != nil {
-			// 如果有根用户节点，挂在根用户节点下
-			rootUser.Children = append(rootUser.Children, treeNode)
-		} else {
-			// 父节点不在 map 中，挂在 root 下
-			root.Children = append(root.Children, treeNode)
-		}
-	}
-
-	// 如果存在根用户节点，返回根用户节点；否则返回默认 root
-	if rootUser != nil {
-		return rootUser, nil
-	}
-	return root, nil
+func (n *NodeService) UpdateNoteContent(id string, content string) error {
+	file := strings.NewReader(content)
+	_, err := n.base.SaveLocalFile("notes", file, id+".md")
+	return err
 }

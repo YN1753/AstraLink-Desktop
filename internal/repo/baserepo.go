@@ -4,11 +4,12 @@ import (
 	"astralink/internal/model"
 	"errors"
 	"fmt"
+	"io"
+	"os"
+
 	"github.com/blevesearch/bleve/v2"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
-	"io"
-	"os"
 	"path/filepath"
 )
 
@@ -17,8 +18,6 @@ type BaseRepo struct {
 	BasePath   string
 	BleveIndex bleve.Index
 }
-
-// 创建索引（第一次会自动创建）
 
 func NewBaseRepo(db *gorm.DB, path string) *BaseRepo {
 	return &BaseRepo{
@@ -65,13 +64,10 @@ func (b *BaseRepo) GetRootPath() string {
 func (b *BaseRepo) SaveLocalFile(subDir string, file io.Reader, filename string) (string, error) {
 	root := b.GetRootPath()
 
-	// 2. 构造文件夹路径（如：.../AppData/Roaming/AstraLink/notes）
 	targetDir := filepath.Join(root, subDir)
 
-	// 3. 构造完整文件路径
 	fullPath := filepath.Join(targetDir, filename)
 
-	// 4. 强制创建目录
 	if err := os.MkdirAll(targetDir, 0755); err != nil {
 		return "", errors.New("无法初始化存储空间")
 	}
@@ -84,7 +80,6 @@ func (b *BaseRepo) SaveLocalFile(subDir string, file io.Reader, filename string)
 
 	_, err = io.Copy(out, file)
 
-	fmt.Println(fullPath)
 	return fullPath, err
 }
 
@@ -97,50 +92,48 @@ func (b *BaseRepo) GetNodeByType(nodeType string) (*[]model.Node, error) {
 	return &node, nil
 }
 func (b *BaseRepo) UpdateNodeInfo(id string, tab string, value string) error {
-	return b.SqlDb.Model(&model.Node{}).Where("id = ?", id).UpdateColumn(tab, value).Error
+	return b.SqlDb.Model(&model.Node{}).Where("id = ?", id).Update(tab, value).Error
 }
 
-func (b *BaseRepo) CreateRelation(req model.Relation) error {
-	return b.SqlDb.Create(&req).Error
+func (b *BaseRepo) UpsertRelation(req model.Relation) error {
+	return b.SqlDb.Clauses(clause.OnConflict{
+		UpdateAll: true,
+	}).Create(&req).Error
 }
 
-func (b *BaseRepo) GetAllNotes() (*[]model.Node, error) {
+func (b *BaseRepo) GetAllNodeByType(typename string) (*[]model.Node, error) {
 	var nodes []model.Node
-	err := b.SqlDb.Where("type = ?", "note").Find(&nodes).Error
+	err := b.SqlDb.Where("type = ?", typename).Find(&nodes).Error
 	return &nodes, err
 }
 
-func (b *BaseRepo) GetNodesByTitle(keyword string) (*[]model.Node, error) {
-	var nodes []model.Node
-	err := b.SqlDb.Where("type = ? AND name LIKE ?", "note", "%"+keyword+"%").Find(&nodes).Error
-	return &nodes, err
-}
-
-func (b *BaseRepo) GetAllRelations() (*[]model.Relation, error) {
+func (b *BaseRepo) GetAllRelationsByType(typename string) (*[]model.Relation, error) {
 	var relations []model.Relation
-	err := b.SqlDb.Find(&relations).Error
+	var err error
+	if typename != "" {
+		err = b.SqlDb.Where("type = ?", typename).Find(&relations).Error
+	} else {
+		err = b.SqlDb.Find(&relations).Error
+	}
 	if err != nil {
-		return &[]model.Relation{}, nil
+		return &[]model.Relation{}, err
 	}
 	return &relations, nil
 }
-
-func (b *BaseRepo) GetRelationsByFromID(fromID string) (*[]model.Relation, error) {
+func (b *BaseRepo) GetRelationsByID(ID string, typename string) (*[]model.Relation, error) {
 	var relations []model.Relation
-	err := b.SqlDb.Where("from_id = ?", fromID).Find(&relations).Error
-	if err != nil {
-		return &[]model.Relation{}, nil
+	var err error
+	if typename == "from_id" {
+		err = b.SqlDb.Where("from_id = ?", ID).Find(&relations).Error
+	} else if typename == "to_id" {
+		err = b.SqlDb.Where("to_id = ?", ID).Find(&relations).Error
+	} else {
+		err = b.SqlDb.Where("to_id = ? OR from_id = ?", ID).Find(&relations).Error
 	}
-	return &relations, err
-}
-
-func (b *BaseRepo) GetRelationsByToID(toID string) (*[]model.Relation, error) {
-	var relations []model.Relation
-	err := b.SqlDb.Where("to_id = ?", toID).Find(&relations).Error
 	if err != nil {
-		return &[]model.Relation{}, nil
+		return &[]model.Relation{}, err
 	}
-	return &relations, err
+	return &relations, nil
 }
 
 func (b *BaseRepo) GetNoteContent(id string) (string, error) {
@@ -155,8 +148,22 @@ func (b *BaseRepo) GetNoteContent(id string) (string, error) {
 	return string(data), err
 }
 
-//
-//func (b *BaseRepo) CreateIndex(req model.NoteDoc) error {
-//	return b.BleveIndex.Index(req.Id, req)
-//
-//}
+func (b *BaseRepo) CountNodesByType(nodeType string) (int64, error) {
+	var count int64
+	err := b.SqlDb.Model(&model.Node{}).Where("type = ?", nodeType).Count(&count).Error
+	return count, err
+}
+
+func (b *BaseRepo) GetAllNodes() (*[]model.Node, error) {
+	var nodes []model.Node
+	err := b.SqlDb.Find(&nodes).Error
+	return &nodes, err
+}
+
+func (b *BaseRepo) DeleteRelationsByNodeID(nodeID string) error {
+	return b.SqlDb.Where("from_id = ? OR to_id = ?", nodeID, nodeID).Delete(&model.Relation{}).Error
+}
+
+func (b *BaseRepo) DeleteNodeById(id string) error {
+	return b.SqlDb.Where("id = ?", id).Delete(&model.Node{}).Error
+}

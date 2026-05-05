@@ -15,18 +15,18 @@ func NewRelationService(baseRepo *repo.BaseRepo) *RelationService {
 	}
 }
 
-func (r *RelationService) CreateRelation(req model.Relation) error {
-	return r.base.CreateRelation(req)
+func (r *RelationService) CreateLink(fromID, toID string) error {
+	return r.base.UpsertRelation(model.Relation{
+		FromID: fromID,
+		ToID:   toID,
+		Type:   "link",
+	})
 }
 
-func (r *RelationService) GetAllRelations() (*[]model.Relation, error) {
-	return r.base.GetAllRelations()
-}
-
-func (r *RelationService) GetOutgoingLinks(noteID string) (*[]model.Relation, error) {
-	return r.base.GetRelationsByFromID(noteID)
-}
-
-func (r *RelationService) GetBacklinks(noteID string) (*[]model.Relation, error) {
-	return r.base.GetRelationsByToID(noteID)
+func (r *RelationService) LinkTagToNode(tagID string, nodeID string) error {
+	return r.base.UpsertRelation(model.Relation{
+		FromID: nodeID,
+		ToID:   tagID,
+		Type:   "tag",
+	})
 }

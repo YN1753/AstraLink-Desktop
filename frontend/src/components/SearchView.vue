@@ -9,17 +9,9 @@ const emit = defineEmits(['close', 'open-note'])
 const searchQuery = ref('')
 const isSearching = ref(false)
 const searchResults = ref([])
-const recentSearches = ref(['项目笔记', 'Go学习', '周报'])
+const recentSearches = ref([])
 
-// 模拟搜索结果（后端未提供接口前先用模拟数据）
-const mockNotes = [
-  { id: 'note-1', name: '项目笔记', content: '这是项目相关的笔记内容，包含重要的需求文档和任务列表。' },
-  { id: 'note-2', name: 'Go学习笔记', content: '学习Go语言的基础知识，包括变量、数据类型、控制流程等。' },
-  { id: 'note-3', name: '周报总结', content: '本周工作汇报，完成的功能和遇到的问题。' },
-  { id: 'note-4', name: '读书笔记', content: '读《深入理解计算机系统》的笔记和感悟。' },
-]
-
-// 模拟搜索方法
+// 真实搜索方法
 async function performSearch(query) {
   if (!query.trim()) {
     searchResults.value = []
@@ -28,14 +20,8 @@ async function performSearch(query) {
 
   isSearching.value = true
 
-  // 模拟异步搜索延迟
-  await new Promise(resolve => setTimeout(resolve, 300))
-
-  const q = query.toLowerCase()
-  searchResults.value = mockNotes.filter(note =>
-    note.name.toLowerCase().includes(q) ||
-    note.content.toLowerCase().includes(q)
-  )
+  // 搜索功能需要后端提供 GetNotesByTitle 接口
+  searchResults.value = []
 
   isSearching.value = false
 }
@@ -50,7 +36,7 @@ watch(searchQuery, (newQuery) => {
 })
 
 function openNote(note) {
-  emit('open-note', note)
+  emit('open-note', { id: note.id, name: note.name })
 }
 
 function addToRecent(query) {
@@ -69,11 +55,22 @@ function useRecentSearch(query) {
   searchQuery.value = query
 }
 
+// 转义 HTML 特殊字符
+function escapeHtml(str) {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+}
+
+// 转义正则特殊字符
+function escapeRegex(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
 // 高亮匹配文本
 function highlightMatch(text, query) {
-  if (!query.trim()) return text
-  const regex = new RegExp(`(${query})`, 'gi')
-  return text.replace(regex, '<mark>$1</mark>')
+  if (!query.trim()) return escapeHtml(text)
+  const escaped = escapeHtml(text)
+  const regex = new RegExp(`(${escapeRegex(query)})`, 'gi')
+  return escaped.replace(regex, '<mark>$1</mark>')
 }
 </script>
 
@@ -116,7 +113,7 @@ function highlightMatch(text, query) {
             @click="openNote(note)"
           >
             <div class="result-title" v-html="highlightMatch(note.name, searchQuery)"></div>
-            <div class="result-content" v-html="highlightMatch(note.content.substring(0, 100), searchQuery)"></div>
+            <div class="result-content" v-if="note.content" v-html="highlightMatch(note.content.substring(0, 100), searchQuery)"></div>
           </div>
         </div>
 

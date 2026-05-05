@@ -40,7 +40,6 @@ func InitDB(basePath string) (*gorm.DB, error) {
 	sqlDB.Exec("PRAGMA journal_mode=WAL;")
 	// 开启外键：确保数据的关联完整性
 	sqlDB.Exec("PRAGMA foreign_keys=ON;")
-
 	// 5. 自动迁移表结构 (把你的模型传进去)
 	err = db.AutoMigrate(&model.Node{}, &model.Relation{})
 	if err != nil {
