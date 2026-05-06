@@ -6,6 +6,7 @@ import (
 	"astralink/pkg/utils"
 	"bytes"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -177,7 +178,7 @@ func (n *NodeService) CreateNote(req model.CreateNoteReq) (string, error) { //�
 	if parentPath == "" {
 		parentPath = "root"
 	}
-	node.Path = parentPath + "/" + node.ID
+	node.Path = parentPath + "/" + req.ParentID
 
 	id, err := n.base.MergeNode(&node)
 	if err != nil {
@@ -208,7 +209,7 @@ func (n *NodeService) CreateGalaxy(req model.MergeNodeReq) (string, error) { //�
 	if parentPath == "" {
 		parentPath = "root"
 	}
-	node.Path = parentPath + "/" + node.ID
+	node.Path = parentPath + "/" + req.ParentID
 
 	id, err := n.base.MergeNode(&node)
 	if err != nil {
@@ -257,42 +258,74 @@ func (n *NodeService) GetAllTag() (*[]model.Node, error) { //获取所有tag
 func (n *NodeService) GetNoteContent(id string) (string, error) { //获取笔记context
 	return n.base.GetNoteContent(id)
 }
+func (n *NodeService) UpdateNodeInfo(req model.UpdateNoteInfoReq) error {
+	node, err := n.base.GetNodeById(req.Id)
+	if err != nil {
+		return err
+	}
+	if req.Path != "" && req.Path != node.Path {
+		node.Path = req.Path
+	}
+	if req.Title != "" && req.Title != node.Name {
+		node.Name = req.Title
+	}
+	if req.Others != nil {
+		node.Others = req.Others
+	}
+	_, err = n.base.MergeNode(&node)
+	return err
 
+}
 func (n *NodeService) UpdateNoteContent(id string, content string) error {
 	file := strings.NewReader(content)
 	_, err := n.base.SaveLocalFile("notes", file, id+".md")
 	return err
 }
 
-func (n *NodeService)GetRelationById(id string)([]model.Relation,error){
-	var res []model.Relation
-	var graph model.D3Graph
-	rel,err:=n.base.GetNodeById(id)
-	if err!=nil{
-		return res,err
+func (n *NodeService) GetRelationById(id string) (model.D3Graph, error) {
+	graph := model.D3Graph{
+		Nodes: make([]model.D3Node, 0),
+		Links: make([]model.D3Link, 0),
 	}
-	nodes,err:=n.base.GetNodeIdByPath(rel.Path,rel.ID)
-	if err!=nil{
-		return res,err
+	rel, err := n.base.GetNodeById(id)
+	if err != nil {
+		return graph, err
 	}
-	nodeMessage,err:=n.base.GetNodeMessageByPath(rel.Path,rel.ID)
-	if err!=nil{
-		return res,err
+	nodeMessage, err := n.base.GetNodeMessageByPath(rel.Path, rel.ID)
+	if err != nil {
+		return graph, err
 	}
-	relations,err:=n.base.GetRelationByNodeId(nodes)
-	if err!=nil{
-		return relations,err
+	var nodes []string
+	for _, id := range nodeMessage {
+		nodes = append(nodes, id.ID)
 	}
-	vailNodeMap:=make(map[string]bool)
-	for _,node:=range nodeMessage{
-		vailNodeMap[node.ID]=true
+	relations, err := n.base.GetRelationByNodeId(nodes)
+	if err != nil {
+		return graph, err
+	}
+	vailNodeMap := make(map[string]bool)
+	for _, node := range nodeMessage {
+		vailNodeMap[node.ID] = true
 		graph.Nodes = append(graph.Nodes, model.D3Node{
-			Id:node.ID,
+			Id:    node.ID,
 			Title: node.Name,
-			Type: node.Type,
+			Type:  node.Type,
 		})
 	}
-	
-//	return res,nil
-//
+	for _, rel := range relations {
+		if vailNodeMap[rel.FromID] && vailNodeMap[rel.ToID] {
+			graph.Links = append(graph.Links, model.D3Link{
+				Source: rel.FromID,
+				Target: rel.ToID,
+				Type:   rel.Type,
+			})
+		}
+	}
+	return graph, nil
+}
+func (n *NodeService) GetRecentNotes(num int) ([]model.Node, error) {
+	if num <= 0 || num >= 9999999 {
+		return nil, errors.New("invalid num")
+	}
+	return n.base.GetRecentNotes(num)
 }

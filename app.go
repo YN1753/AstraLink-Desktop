@@ -115,6 +115,10 @@ func (a *App) GetNodeByPath(path string) ([]model.Node, error) {
 	return a.NodeService.GetNodeByPath(path)
 }
 
+func (a *App) GetRelationById(id string) (model.D3Graph, error) {
+	return a.NodeService.GetRelationById(id)
+}
+
 func (a *App) LinkTagToNode(tagID string, nodeID string) error {
 	return a.RelationService.LinkTagToNode(tagID, nodeID)
 }
@@ -129,4 +133,12 @@ func (a *App) GetNoteContent(id string) (string, error) {
 
 func (a *App) UpdateNoteContent(id string, content string) error {
 	return a.NodeService.UpdateNoteContent(id, content)
+}
+
+func (a *App) UpdateNodeInfo(req model.UpdateNoteInfoReq) error {
+	return a.NodeService.UpdateNodeInfo(req)
+}
+
+func (a *App) GetRecentNotes(num int) ([]model.Node, error) {
+	return a.NodeService.GetRecentNotes(num)
 }

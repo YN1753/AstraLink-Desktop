@@ -43,6 +43,13 @@ type Node struct {
 	UpdateTime int64 `json:"update_time" gorm:"autoUpdateTime"`
 }
 
+type UpdateNoteInfoReq struct {
+	Id     string  `json:"id" `
+	Title  string  `json:"title"`
+	Path   string  `json:"path"`
+	Others JSONMap `json:"others"`
+}
+
 type NoteDoc struct {
 	Id      string `json:"id" `
 	Title   string `json:"title"`
@@ -60,17 +67,17 @@ type TreeNode struct {
 	Type     string      `json:"type"` // folder, note, user
 	Children []*TreeNode `json:"children,omitempty"`
 }
-type D3Graph struct{
+type D3Graph struct {
 	Nodes []D3Node `json:"nodes"`
-	Links []D3Link  `json:"links"`
+	Links []D3Link `json:"links"`
 }
-type D3Node struct{
-	Id string `json:"id"`
+type D3Node struct {
+	Id    string `json:"id"`
 	Title string `json:"title"`
 	Type  string `json:"type"`
 }
-type  D3Link struct {
+type D3Link struct {
 	Source string `json:"source"`
 	Target string `json:"target"`
-	Type string `json:"type"`
+	Type   string `json:"type"`
 }

@@ -6,7 +6,7 @@ import EditorView from './components/EditorView.vue'
 import GalaxyView from './components/GalaxyView.vue'
 import SettingsView from './components/SettingsView.vue'
 import SearchView from './components/SearchView.vue'
-import { CheckUserNode, MergeUserInfo, GetAvatar, UploadAvatar, GetDataSpace, GetTagCount, GetNoteCount, GetGalaxyCount, GetAllTag } from '../wailsjs/go/main/App'
+import { CheckUserNode, MergeUserInfo, GetAvatar, UploadAvatar, GetDataSpace, GetTagCount, GetNoteCount, GetGalaxyCount, GetAllTag, GetRecentNotes } from '../wailsjs/go/main/App'
 
 const currentView = ref('home')
 const previousView = ref('home')
@@ -51,15 +51,26 @@ const stats = ref({
 // 侧边栏状态
 const sidebarCollapsed = ref(localStorage.getItem('sidebarCollapsed') === 'true')
 const tags = ref([])
-const recentNotes = ref(JSON.parse(localStorage.getItem('recentNotes') || '[]'))
+const recentNotes = ref([])
 
-// 最近笔记追踪
+// 从后端获取最近笔记
+async function loadRecentNotes() {
+  try {
+    const notes = await GetRecentNotes(10)
+    recentNotes.value = (notes || []).map(n => ({
+      id: n.id,
+      name: n.name,
+      timestamp: n.update_time ? n.update_time * 1000 : Date.now() // 秒转毫秒
+    }))
+  } catch (e) {
+    console.error('获取最近笔记失败:', e)
+  }
+}
+
+// 最近笔记追踪（打开笔记时刷新列表）
 function trackRecentNote(noteId, noteName) {
-  if (!noteId) return
-  recentNotes.value = recentNotes.value.filter(n => n.id !== noteId)
-  recentNotes.value.unshift({ id: noteId, name: noteName || '未命名', timestamp: Date.now() })
-  if (recentNotes.value.length > 10) recentNotes.value = recentNotes.value.slice(0, 10)
-  localStorage.setItem('recentNotes', JSON.stringify(recentNotes.value))
+  // 从后端重新获取最新列表
+  loadRecentNotes()
 }
 
 // 应用主题（CSS [data-theme] 选择器自动处理变量映射）
@@ -132,6 +143,9 @@ async function init() {
           const tagList = await GetAllTag()
           tags.value = tagList || []
         } catch (e) {}
+
+        // 加载最近笔记
+        await loadRecentNotes()
       }
     }
   } catch (e) {}
@@ -209,10 +223,16 @@ async function handleUpdateUser(updatedUser) {
 
 // 编辑器保存回调
 function handleEditorSaved(savedNote) {
-  init()
-  if (savedNote?.id) {
-    trackRecentNote(savedNote.id, savedNote.name)
-  }
+  loadRecentNotes()
+  // 刷新统计数据
+  Promise.all([
+    GetNoteCount(),
+    GetGalaxyCount(),
+    GetTagCount(),
+    GetDataSpace()
+  ]).then(([noteCount, galaxyCount, tagCount, totalSize]) => {
+    stats.value = { noteCount, galaxyCount, tagCount, totalSize }
+  }).catch(() => {})
 }
 
 // 上传头像

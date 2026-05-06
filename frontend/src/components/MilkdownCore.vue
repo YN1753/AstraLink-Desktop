@@ -77,6 +77,7 @@ onUnmounted(() => {
   font-size: 17px;
   min-height: 600px;
   padding-bottom: 200px;
+  white-space: pre-wrap;
 }
 
 /* 占位符提示文字 */

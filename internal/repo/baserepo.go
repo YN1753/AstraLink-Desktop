@@ -32,9 +32,7 @@ func (b *BaseRepo) MergeNode(node *model.Node) (string, error) {
 		return "", nil
 	}
 	// 使用 OnConflict 确保在 ID 冲突时执行全字段更新
-	return node.ID, b.SqlDb.Clauses(clause.OnConflict{
-		UpdateAll: true,
-	}).Create(node).Error
+	return node.ID, b.SqlDb.Save(node).Error
 }
 
 func (b *BaseRepo) GetNodeById(id string) (model.Node, error) {
@@ -167,18 +165,40 @@ func (b *BaseRepo) DeleteRelationsByNodeID(nodeID string) error {
 func (b *BaseRepo) DeleteNodeById(id string) error {
 	return b.SqlDb.Where("id = ?", id).Delete(&model.Node{}).Error
 }
-func (b *BaseRepo)GetNodeIdByPath(path string,id string)([]string,error){
+func (b *BaseRepo) GetNodeIdByPath(path string, id string) ([]string, error) {
 	var nodes []string
-	err:=b.SqlDb.Model(model.Node{}).Where("path LIKE=?",path+"/"+id+"%").Error
-	return nodes,err
+	err := b.SqlDb.Model(model.Node{}).Where("path LIKE=?", path+"/"+id+"%").Error
+	return nodes, err
 }
-func (b *BaseRepo)GetRelationByNodeId (nodes []string)([]model.Relation,error){
+func (b *BaseRepo) GetRelationByNodeId(nodes []string) ([]model.Relation, error) {
 	var relation []model.Relation
-	err:=b.SqlDb.Model(model.Relation{}).Where("from_id IN ? AND to_id IN ?",nodes,nodes).Find(&relation).Error
-	return relation,err
+	err := b.SqlDb.Model(model.Relation{}).Where("from_id IN ? AND to_id IN ?", nodes, nodes).Find(&relation).Error
+	return relation, err
 }
-func (b *BaseRepo)GetNodeMessageByPath(path string,id string)([]model.Node,error){
+func (b *BaseRepo) GetNodeMessageByPath(path string, id string) ([]model.Node, error) {
 	var nodes []model.Node
-	err:=b.SqlDb.Model(model.Node{}).Where("path LIKE ?",path+"/"+id).Find(&nodes).Error
-	return nodes,err
+	if path != "root" {
+		path = path + "/" + id + "%"
+	} else {
+		path = path + "%"
+	}
+	err := b.SqlDb.Model(model.Node{}).Where("path LIKE ?", path).Find(&nodes).Error
+	return nodes, err
+}
+func (b *BaseRepo) GetNodesByRootPath(rootPath string) ([]model.Node, error) {
+	var nodes []model.Node
+	// 根节点自身 (path == "root") + 所有子节点 (path LIKE "root/%")
+	err := b.SqlDb.Where("path = ? OR path LIKE ?", rootPath, rootPath+"/%").Find(&nodes).Error
+	return nodes, err
+}
+func (n *BaseRepo) GetRecentNotes(limit int) ([]model.Node, error) {
+	var notes []model.Node
+	err := n.SqlDb.Where("type = ?", "note").
+		Order("update_time DESC").
+		Limit(limit).
+		Find(&notes).Error
+	if err != nil {
+		return nil, err
+	}
+	return notes, nil
 }

@@ -2,7 +2,7 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import { MilkdownProvider } from '@milkdown/vue'
 import MilkdownCore from './MilkdownCore.vue'
-import { GetNoteContent, CreateNote, UpdateNoteContent } from '../../wailsjs/go/main/App'
+import { GetNoteContent, CreateNote, UpdateNoteContent, UpdateNodeInfo } from '../../wailsjs/go/main/App'
 
 const props = defineProps(['status', 'noteId', 'user', 'newNoteRequest'])
 const emit = defineEmits(['saved', 'back'])
@@ -15,7 +15,7 @@ const tabCounter = ref(0)
 const currentTab = computed(() => openTabs.value.find(t => t.id === currentTabId.value))
 
 // 打开笔记（新建标签或切换）
-async function openNote(note = null) {
+async function openNote(note = null, forceReload = false) {
   if (!note) {
     // 新建空白笔记
     const id = `new-${++tabCounter.value}`
@@ -24,16 +24,16 @@ async function openNote(note = null) {
     return
   }
 
-  // 已打开则激活
+  // 已打开且不需要强制刷新则激活
   const existing = openTabs.value.find(t => t.id === note.id)
-  if (existing) {
+  if (existing && !forceReload) {
     currentTabId.value = note.id
     return
   }
 
   // 从后端加载笔记内容
-  let content = note.content || ''
-  if (!content && note.id && !note.id.startsWith('new-')) {
+  let content = ''
+  if (note.id && !note.id.startsWith('new-')) {
     try {
       content = await GetNoteContent(note.id)
     } catch (e) {
@@ -41,8 +41,15 @@ async function openNote(note = null) {
     }
   }
 
-  openTabs.value.push({ id: note.id, name: note.name, content, isNew: false })
-  currentTabId.value = note.id
+  if (existing && forceReload) {
+    // 强制刷新已打开的标签
+    existing.content = content || note.content || ''
+    currentTabId.value = note.id
+  } else {
+    // 新开标签
+    openTabs.value.push({ id: note.id, name: note.name, content: content || note.content || '', isNew: false })
+    currentTabId.value = note.id
+  }
 }
 
 // 关闭标签
@@ -70,10 +77,10 @@ onMounted(async () => {
   }
 })
 
-// 监听 noteId 变化
+// 监听 noteId 变化（从外部打开笔记时强制刷新）
 watch(() => props.noteId, async (newId) => {
   if (newId) {
-    await openNote({ id: newId, name: '' })
+    await openNote({ id: newId, name: '' }, true)
   }
 })
 
@@ -138,16 +145,32 @@ async function onSave() {
   const title = extractTitle(currentTab.value.content)
   const content = currentTab.value.content
 
+  console.log('保存笔记:', { id: currentTab.value.id, title, contentLength: content.length })
+
   try {
     if (currentTab.value.id && !currentTab.value.id.startsWith('new-')) {
       // 更新已有笔记
+      console.log('调用 UpdateNoteContent:', currentTab.value.id)
       await UpdateNoteContent(currentTab.value.id, content)
+      console.log('UpdateNoteContent 完成')
+
+      // 更新节点信息
+      console.log('调用 UpdateNodeInfo:', currentTab.value.id, title)
+      await UpdateNodeInfo({
+        id: currentTab.value.id,
+        title: title,
+        path: '',
+        others: {}
+      })
+      console.log('UpdateNodeInfo 完成')
     } else {
       // 创建新笔记并回写真实 ID
+      console.log('调用 CreateNote')
       const newId = await CreateNote({
         name: title, file: content,
         parentPath: "root", parentId: props.user?.id || "", others: {}
       })
+      console.log('CreateNote 返回:', newId)
       if (newId) {
         currentTab.value.id = newId
       }
@@ -222,7 +245,7 @@ function goHome() {
         <!-- 编辑器内容 -->
         <div class="editor-scroll-area">
           <MilkdownProvider>
-            <MilkdownCore v-model="currentContent" @update:modelValue="onContentChange" />
+            <MilkdownCore :key="currentTabId" v-model="currentContent" @update:modelValue="onContentChange" />
           </MilkdownProvider>
         </div>
       </div>

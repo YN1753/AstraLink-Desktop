@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import * as d3 from 'd3'
-import { GetNodeByPath, CreateGalaxy, CreateNote } from '../../wailsjs/go/main/App'
+import { GetRelationById, CreateGalaxy, CreateNote } from '../../wailsjs/go/main/App'
 
 const props = defineProps(['user'])
 const emit = defineEmits(['back', 'open-note'])
@@ -73,77 +73,59 @@ function loadAvatar() {
   img.src = props.user.avatar
 }
 
-function buildTree(allNodes) {
-  // Find the user node (path === 'root')
-  const userNode = allNodes.find(n => n.path === 'root')
-  // Children: everything except root
-  const children = allNodes.filter(n => n.path !== 'root')
+function buildGraph(data) {
+  const gNodes = (data.nodes || []).map(n => ({
+    id: n.id,
+    name: n.title || '未命名',
+    type: n.type,
+    radius: NODE_RADIUS[n.type] || 18,
+    x: width / 2 + (Math.random() - 0.5) * 200,
+    y: height / 2 + (Math.random() - 0.5) * 200
+  }))
 
-  const graphNodes = []
-  const graphLinks = []
-  const added = new Set()
-
-  // Add user node at center
+  // Center the user node
+  const userNode = gNodes.find(n => n.type === 'user')
   if (userNode) {
-    graphNodes.push({
-      id: userNode.id,
-      name: userNode.name || props.user.username || '用户',
-      type: 'user',
-      path: userNode.path,
-      others: userNode.others,
-      radius: NODE_RADIUS.user,
-      x: width / 2,
-      y: height / 2
-    })
-    added.add(userNode.id)
+    userNode.x = width / 2
+    userNode.y = height / 2
+    userNode.fx = width / 2
+    userNode.fy = height / 2
   }
 
-  // Build path map for children
-  const pathMap = new Map()
-  children.forEach(n => pathMap.set(n.path, n))
+  const gLinks = (data.links || []).map(l => ({
+    source: l.source,
+    target: l.target,
+    type: l.type
+  }))
 
-  children.forEach(n => {
-    if (!added.has(n.id)) {
-      graphNodes.push({
-        id: n.id,
-        name: n.name || '未命名',
-        type: n.type,
-        path: n.path,
-        others: n.others,
-        radius: NODE_RADIUS[n.type] || 18
-      })
-      added.add(n.id)
-    }
-
-    // Find parent by path hierarchy
-    const parts = n.path.split('/')
-    if (parts.length > 2) {
-      const parentPath = parts.slice(0, -1).join('/')
-      const parent = pathMap.get(parentPath)
-      if (parent) {
-        graphLinks.push({ source: parent.id, target: n.id })
-      } else if (parentPath === 'root' && userNode) {
-        graphLinks.push({ source: userNode.id, target: n.id })
-      }
-    } else if (parts.length === 2 && parts[0] === 'root' && userNode) {
-      graphLinks.push({ source: userNode.id, target: n.id })
-    }
-  })
-
-  return { nodes: graphNodes, links: graphLinks }
+  return { nodes: gNodes, links: gLinks }
 }
 
 async function loadNodes() {
   loading.value = true
   try {
-    const allNodes = await GetNodeByPath('root')
-    nodes.value = allNodes || []
-    const tree = buildTree(nodes.value)
-    graphNodes = tree.nodes
-    graphLinks = tree.links
+    // Get container size before building graph
+    const container = canvasRef.value
+    if (container) {
+      width = container.clientWidth
+      height = container.clientHeight
+    }
+
+    const data = await GetRelationById(props.user.id)
+    nodes.value = data.nodes || []
+    const graph = buildGraph(data)
+    graphNodes = graph.nodes
+    graphLinks = graph.links
+
+    // Release user fixed position after initial layout
+    setTimeout(() => {
+      const un = graphNodes.find(n => n.type === 'user')
+      if (un) { un.fx = null; un.fy = null }
+    }, 2000)
+
     initGraph()
   } catch (e) {
-    console.error('Failed to load nodes:', e)
+    console.error('Failed to load graph:', e)
   } finally {
     loading.value = false
   }
@@ -407,7 +389,7 @@ async function createNode() {
     } else {
       await CreateNote({
         name,
-        file: '',
+        file: '# ' + name + '\n\n在此输入正文...',
         parentId,
         parentPath: 'root',
         others: {}
