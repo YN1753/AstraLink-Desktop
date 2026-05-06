@@ -6,7 +6,7 @@ import EditorView from './components/EditorView.vue'
 import GalaxyView from './components/GalaxyView.vue'
 import SettingsView from './components/SettingsView.vue'
 import SearchView from './components/SearchView.vue'
-import { CheckUserNode, MergeUserInfo, GetAvatar, UploadAvatar, GetDataSpace, GetTagCount, GetNoteCount, GetGalaxyCount, GetAllTag, GetRecentNotes } from '../wailsjs/go/main/App'
+import { CheckUserNode, MergeUserInfo, GetAvatar, UploadAvatar, GetDataSpace, GetTagCount, GetNoteCount, GetGalaxyCount, GetTagsWithCount, GetRecentNotes } from '../wailsjs/go/main/App'
 
 const currentView = ref('home')
 const previousView = ref('home')
@@ -52,6 +52,7 @@ const stats = ref({
 const sidebarCollapsed = ref(localStorage.getItem('sidebarCollapsed') === 'true')
 const tags = ref([])
 const recentNotes = ref([])
+const selectedTag = ref(null)
 
 // 从后端获取最近笔记
 async function loadRecentNotes() {
@@ -140,7 +141,7 @@ async function init() {
 
         // 加载标签
         try {
-          const tagList = await GetAllTag()
+          const tagList = await GetTagsWithCount()
           tags.value = tagList || []
         } catch (e) {}
 
@@ -224,6 +225,7 @@ async function handleUpdateUser(updatedUser) {
 // 编辑器保存回调
 function handleEditorSaved(savedNote) {
   loadRecentNotes()
+  refreshTags()
   // 刷新统计数据
   Promise.all([
     GetNoteCount(),
@@ -264,6 +266,23 @@ function handleKeydown(e) {
   }
 }
 
+// 处理标签点击（筛选笔记）
+function handleTagClick(tag) {
+  if (selectedTag.value === tag.id) {
+    selectedTag.value = null // 取消选中
+  } else {
+    selectedTag.value = tag.id
+  }
+}
+
+// 刷新标签数据
+async function refreshTags() {
+  try {
+    const tagList = await GetTagsWithCount()
+    tags.value = tagList || []
+  } catch (e) {}
+}
+
 onMounted(() => {
   applyTheme(config.value.theme)
   applyFont(config.value.font)
@@ -286,9 +305,11 @@ onUnmounted(() => {
         :currentView="currentView"
         :tags="tags"
         :recentNotes="recentNotes"
+        :selectedTag="selectedTag"
         @open-note="(note) => openNoteById(note.id, note.name)"
         @open-settings="showSettings = true"
         @go-home="currentView = 'home'"
+        @tag-click="handleTagClick"
     />
 
     <main class="app-viewport">
@@ -319,6 +340,7 @@ onUnmounted(() => {
           :newNoteRequest="newNoteRequest"
           @back="editingNoteId = null; currentView = previousView"
           @saved="handleEditorSaved"
+          @refresh-tags="refreshTags"
       />
     </main>
 

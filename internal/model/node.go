@@ -81,3 +81,15 @@ type D3Link struct {
 	Target string `json:"target"`
 	Type   string `json:"type"`
 }
+
+// TagWithCount 标签及其关联的笔记数量
+type TagWithCount struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	NoteCount int    `json:"noteCount"`
+}
+
+type TagMessage struct {
+	Id   string `json:"id"`
+	Name string `json:"name"`
+}

@@ -25,8 +25,21 @@ func (r *RelationService) CreateLink(fromID, toID string) error {
 
 func (r *RelationService) LinkTagToNode(tagID string, nodeID string) error {
 	return r.base.UpsertRelation(model.Relation{
-		FromID: nodeID,
-		ToID:   tagID,
+		FromID: tagID,
+		ToID:   nodeID,
 		Type:   "tag",
 	})
+}
+
+func (r *RelationService) GetTagsByNodeID(nodeID string) (*[]model.TagMessage, error) {
+	relation, err := r.base.GetTagsByNodeID(nodeID)
+	if err != nil {
+		return nil, err
+	}
+	nodes := make([]string, 0)
+	for _, value := range *relation {
+		nodes = append(nodes, value.FromID)
+	}
+	nodeMessage, err := r.base.GetTagById(nodes)
+	return &nodeMessage, err
 }

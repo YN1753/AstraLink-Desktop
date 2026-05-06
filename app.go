@@ -111,6 +111,10 @@ func (a *App) GetAllTag() (*[]model.Node, error) {
 	return a.NodeService.GetAllTag()
 }
 
+func (a *App) GetTagsWithCount() ([]model.TagWithCount, error) {
+	return a.NodeService.GetTagsWithCount()
+}
+
 func (a *App) GetNodeByPath(path string) ([]model.Node, error) {
 	return a.NodeService.GetNodeByPath(path)
 }
@@ -121,6 +125,10 @@ func (a *App) GetRelationById(id string) (model.D3Graph, error) {
 
 func (a *App) LinkTagToNode(tagID string, nodeID string) error {
 	return a.RelationService.LinkTagToNode(tagID, nodeID)
+}
+
+func (a *App) GetTagsByNodeID(nodeID string) (*[]model.TagMessage, error) {
+	return a.RelationService.GetTagsByNodeID(nodeID)
 }
 
 // ============================================================

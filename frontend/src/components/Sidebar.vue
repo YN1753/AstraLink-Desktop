@@ -1,18 +1,20 @@
 <script setup>
 import { ref, watch } from 'vue'
+import TagCloud from './TagCloud.vue'
 
 const props = defineProps({
   user: Object,
   currentView: String,
   tags: Array,
   recentNotes: Array,
+  selectedTag: String,
   modelValue: {
     type: Boolean,
     default: false
   }
 })
 
-const emit = defineEmits(['update:modelValue', 'open-note', 'open-settings', 'go-home'])
+const emit = defineEmits(['update:modelValue', 'open-note', 'open-settings', 'go-home', 'tag-click'])
 
 const collapsed = ref(props.modelValue)
 
@@ -80,16 +82,20 @@ function relativeTime(timestamp) {
         <span v-if="!collapsed" class="section-title">标签</span>
         <span v-if="!collapsed && tags && tags.length" class="section-count">{{ tags.length }}</span>
       </div>
-      <div v-if="!collapsed" class="section-list tag-list">
-        <div v-if="!tags || tags.length === 0" class="section-empty">
-          <span>暂无标签</span>
-        </div>
-        <div v-for="tag in (tags || [])" :key="tag.id" class="list-item tag-item">
-          <span class="item-dot"></span>
-          <span class="item-name">{{ tag.name }}</span>
-        </div>
-      </div>
-      <div v-if="collapsed && tags && tags.length" class="badge-dot">{{ tags.length > 9 ? '9+' : tags.length }}</div>
+      <TagCloud
+        v-if="!collapsed"
+        :tags="tags"
+        :selectedTag="selectedTag"
+        :collapsed="false"
+        @tag-click="(tag) => emit('tag-click', tag)"
+      />
+      <TagCloud
+        v-if="collapsed && tags && tags.length"
+        :tags="tags"
+        :selectedTag="selectedTag"
+        :collapsed="true"
+        @tag-click="(tag) => emit('tag-click', tag)"
+      />
     </div>
 
     <!-- Recent section -->

@@ -329,3 +329,25 @@ func (n *NodeService) GetRecentNotes(num int) ([]model.Node, error) {
 	}
 	return n.base.GetRecentNotes(num)
 }
+
+func (n *NodeService) GetTagsWithCount() ([]model.TagWithCount, error) {
+	tags, err := n.base.GetNodeByType("tag")
+	if err != nil {
+		return nil, err
+	}
+
+	counts, err := n.base.GetTagRelationCounts()
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]model.TagWithCount, 0, len(*tags))
+	for _, tag := range *tags {
+		result = append(result, model.TagWithCount{
+			ID:        tag.ID,
+			Name:      tag.Name,
+			NoteCount: counts[tag.ID],
+		})
+	}
+	return result, nil
+}

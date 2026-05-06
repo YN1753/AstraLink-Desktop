@@ -2,10 +2,11 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import { MilkdownProvider } from '@milkdown/vue'
 import MilkdownCore from './MilkdownCore.vue'
-import { GetNoteContent, CreateNote, UpdateNoteContent, UpdateNodeInfo } from '../../wailsjs/go/main/App'
+import TagInput from './TagInput.vue'
+import { GetNoteContent, CreateNote, UpdateNoteContent, UpdateNodeInfo, LinkTagToNode, GetTagsWithCount, GetTagsByNodeID } from '../../wailsjs/go/main/App'
 
 const props = defineProps(['status', 'noteId', 'user', 'newNoteRequest'])
-const emit = defineEmits(['saved', 'back'])
+const emit = defineEmits(['saved', 'back', 'refresh-tags'])
 
 // ==================== 多标签页 ====================
 const openTabs = ref([])
@@ -21,6 +22,7 @@ async function openNote(note = null, forceReload = false) {
     const id = `new-${++tabCounter.value}`
     openTabs.value.push({ id, name: '未命名', content: '', isNew: true })
     currentTabId.value = id
+    noteTags.value[id] = []
     return
   }
 
@@ -50,6 +52,9 @@ async function openNote(note = null, forceReload = false) {
     openTabs.value.push({ id: note.id, name: note.name, content: content || note.content || '', isNew: false })
     currentTabId.value = note.id
   }
+
+  // Load tags for this note (同步等待)
+  await loadNoteTags(note.id)
 }
 
 // 关闭标签
@@ -190,7 +195,15 @@ async function onSave() {
     // 更新标签名
     currentTab.value.name = title
     currentTab.value.isNew = false
+
+    // Link tags to note
+    const tags = noteTags.value[currentTab.value.id] || []
+    if (tags.length > 0) {
+      await linkTagsToNote(currentTab.value.id, tags)
+    }
+
     emit('saved', { id: currentTab.value.id, name: currentTab.value.name })
+    emit('refresh-tags')
   } catch (e) {
     console.error('保存失败:', e)
   }
@@ -200,6 +213,50 @@ function goHome() {
   openTabs.value = []
   currentTabId.value = null
   emit('back')
+}
+
+// ==================== 笔记标签 ====================
+const noteTags = ref({})
+
+async function loadNoteTags(noteId) {
+  console.log('loadNoteTags called with:', noteId)
+  if (!noteId || noteId.startsWith('new-')) {
+    noteTags.value[noteId] = []
+    return
+  }
+  try {
+    // Get tag relations for this note (returns TagMessage directly)
+    const tagMessages = await GetTagsByNodeID(noteId)
+    console.log('tagMessages:', tagMessages)
+    if (tagMessages && tagMessages.length > 0) {
+      noteTags.value[noteId] = tagMessages.map(t => ({
+        id: t.id,
+        name: t.name,
+        noteCount: 0
+      }))
+    } else {
+      noteTags.value[noteId] = []
+    }
+  } catch (e) {
+    console.error('加载笔记标签失败:', e)
+    noteTags.value[noteId] = []
+  }
+}
+
+function handleTagsChanged(noteId, tags) {
+  noteTags.value[noteId] = tags
+}
+
+// Link tags to note on save
+async function linkTagsToNote(noteId, tags) {
+  if (!noteId || noteId.startsWith('new-') || !tags || tags.length === 0) return
+  try {
+    for (const tag of tags) {
+      await LinkTagToNode(tag.id, noteId)
+    }
+  } catch (e) {
+    console.error('链接标签失败:', e)
+  }
 }
 </script>
 
@@ -234,6 +291,14 @@ function goHome() {
           <button class="sync-btn" @click="onSave">同步星链 / SYNC</button>
         </div>
       </header>
+
+      <!-- 笔记标签输入 -->
+      <TagInput
+        v-if="currentTab && !currentTab.isNew"
+        :noteId="currentTab.id"
+        :noteTags="noteTags[currentTab.id] || []"
+        @tags-changed="(tags) => handleTagsChanged(currentTab.id, tags)"
+      />
 
       <div class="editor-main">
         <!-- 侧边栏：大纲 -->

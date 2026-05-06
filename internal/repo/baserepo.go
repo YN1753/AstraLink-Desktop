@@ -202,3 +202,31 @@ func (n *BaseRepo) GetRecentNotes(limit int) ([]model.Node, error) {
 	}
 	return notes, nil
 }
+
+func (n *BaseRepo) GetTagById(nodes []string) ([]model.TagMessage, error) {
+	var res []model.TagMessage
+	err := n.SqlDb.Model(model.Node{}).Where("id IN ?", nodes).Find(&res).Error
+	return res, err
+}
+
+func (b *BaseRepo) GetTagRelationCounts() (map[string]int, error) {
+	var relations []model.Relation
+	err := b.SqlDb.Where("type = ?", "tag").Find(&relations).Error
+	if err != nil {
+		return nil, err
+	}
+	counts := make(map[string]int)
+	for _, rel := range relations {
+		counts[rel.ToID]++
+	}
+	return counts, nil
+}
+
+func (b *BaseRepo) GetTagsByNodeID(nodeID string) (*[]model.Relation, error) {
+	var relations []model.Relation
+	err := b.SqlDb.Where("to_id = ? AND type = ?", nodeID, "tag").Find(&relations).Error
+	if err != nil {
+		return nil, err
+	}
+	return &relations, nil
+}
