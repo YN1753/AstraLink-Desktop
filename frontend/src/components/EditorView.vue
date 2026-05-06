@@ -95,6 +95,18 @@ const outline = computed(() => {
   return parseOutline(content)
 })
 
+function stripInlineMarkdown(text) {
+  return text
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .replace(/__(.+?)__/g, '$1')
+    .replace(/\*(.+?)\*/g, '$1')
+    .replace(/_(.+?)_/g, '$1')
+    .replace(/`(.+?)`/g, '$1')
+    .replace(/~~(.+?)~~/g, '$1')
+    .replace(/\[(.+?)\]\(.+?\)/g, '$1')
+    .replace(/!\[.*?\]\(.+?\)/g, '')
+}
+
 function parseOutline(markdown) {
   if (!markdown) return []
   const lines = markdown.split('\n')
@@ -105,7 +117,7 @@ function parseOutline(markdown) {
     if (match) {
       result.push({
         level: match[1].length,
-        text: match[2].trim(),
+        text: stripInlineMarkdown(match[2].trim()),
         line: i
       })
     }
