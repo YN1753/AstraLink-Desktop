@@ -60,3 +60,17 @@ type TreeNode struct {
 	Type     string      `json:"type"` // folder, note, user
 	Children []*TreeNode `json:"children,omitempty"`
 }
+type D3Graph struct{
+	Nodes []D3Node `json:"nodes"`
+	Links []D3Link  `json:"links"`
+}
+type D3Node struct{
+	Id string `json:"id"`
+	Title string `json:"title"`
+	Type  string `json:"type"`
+}
+type  D3Link struct {
+	Source string `json:"source"`
+	Target string `json:"target"`
+	Type string `json:"type"`
+}

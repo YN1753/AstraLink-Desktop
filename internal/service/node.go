@@ -263,3 +263,36 @@ func (n *NodeService) UpdateNoteContent(id string, content string) error {
 	_, err := n.base.SaveLocalFile("notes", file, id+".md")
 	return err
 }
+
+func (n *NodeService)GetRelationById(id string)([]model.Relation,error){
+	var res []model.Relation
+	var graph model.D3Graph
+	rel,err:=n.base.GetNodeById(id)
+	if err!=nil{
+		return res,err
+	}
+	nodes,err:=n.base.GetNodeIdByPath(rel.Path,rel.ID)
+	if err!=nil{
+		return res,err
+	}
+	nodeMessage,err:=n.base.GetNodeMessageByPath(rel.Path,rel.ID)
+	if err!=nil{
+		return res,err
+	}
+	relations,err:=n.base.GetRelationByNodeId(nodes)
+	if err!=nil{
+		return relations,err
+	}
+	vailNodeMap:=make(map[string]bool)
+	for _,node:=range nodeMessage{
+		vailNodeMap[node.ID]=true
+		graph.Nodes = append(graph.Nodes, model.D3Node{
+			Id:node.ID,
+			Title: node.Name,
+			Type: node.Type,
+		})
+	}
+	
+//	return res,nil
+//
+}

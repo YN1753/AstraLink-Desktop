@@ -167,3 +167,18 @@ func (b *BaseRepo) DeleteRelationsByNodeID(nodeID string) error {
 func (b *BaseRepo) DeleteNodeById(id string) error {
 	return b.SqlDb.Where("id = ?", id).Delete(&model.Node{}).Error
 }
+func (b *BaseRepo)GetNodeIdByPath(path string,id string)([]string,error){
+	var nodes []string
+	err:=b.SqlDb.Model(model.Node{}).Where("path LIKE=?",path+"/"+id+"%").Error
+	return nodes,err
+}
+func (b *BaseRepo)GetRelationByNodeId (nodes []string)([]model.Relation,error){
+	var relation []model.Relation
+	err:=b.SqlDb.Model(model.Relation{}).Where("from_id IN ? AND to_id IN ?",nodes,nodes).Find(&relation).Error
+	return relation,err
+}
+func (b *BaseRepo)GetNodeMessageByPath(path string,id string)([]model.Node,error){
+	var nodes []model.Node
+	err:=b.SqlDb.Model(model.Node{}).Where("path LIKE ?",path+"/"+id).Find(&nodes).Error
+	return nodes,err
+}
