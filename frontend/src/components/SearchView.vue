@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
 import { NInput, NButton, NEmpty, NSpin } from 'naive-ui'
+import { SearchNotes } from '../../wailsjs/go/main/App'
 
 const props = defineProps(['user'])
 const emit = defineEmits(['close', 'open-note'])
@@ -11,7 +12,7 @@ const isSearching = ref(false)
 const searchResults = ref([])
 const recentSearches = ref([])
 
-// 真实搜索方法
+// 真实搜索方法 - 使用 Bleve 全文搜索
 async function performSearch(query) {
   if (!query.trim()) {
     searchResults.value = []
@@ -20,8 +21,13 @@ async function performSearch(query) {
 
   isSearching.value = true
 
-  // 搜索功能需要后端提供 GetNotesByTitle 接口
-  searchResults.value = []
+  try {
+    const results = await SearchNotes(query)
+    searchResults.value = results || []
+  } catch (e) {
+    console.error('搜索失败:', e)
+    searchResults.value = []
+  }
 
   isSearching.value = false
 }
@@ -36,7 +42,7 @@ watch(searchQuery, (newQuery) => {
 })
 
 function openNote(note) {
-  emit('open-note', { id: note.id, name: note.name })
+  emit('open-note', { id: note.id, name: note.title })
 }
 
 function addToRecent(query) {
@@ -112,7 +118,7 @@ function highlightMatch(text, query) {
             class="result-item"
             @click="openNote(note)"
           >
-            <div class="result-title" v-html="highlightMatch(note.name, searchQuery)"></div>
+            <div class="result-title" v-html="highlightMatch(note.title, searchQuery)"></div>
             <div class="result-content" v-if="note.content" v-html="highlightMatch(note.content.substring(0, 100), searchQuery)"></div>
           </div>
         </div>

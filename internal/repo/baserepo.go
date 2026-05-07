@@ -19,11 +19,11 @@ type BaseRepo struct {
 	BleveIndex bleve.Index
 }
 
-func NewBaseRepo(db *gorm.DB, path string) *BaseRepo {
+func NewBaseRepo(db *gorm.DB, path string, bleveIndex bleve.Index) *BaseRepo {
 	return &BaseRepo{
-		SqlDb:    db,
-		BasePath: path,
-		//BleveIndex: bleve,
+		SqlDb:      db,
+		BasePath:   path,
+		BleveIndex: bleveIndex,
 	}
 }
 
@@ -233,4 +233,75 @@ func (b *BaseRepo) GetTagsByNodeID(nodeID string) (*[]model.Relation, error) {
 
 func (b *BaseRepo) DeleteRelation(rel model.DeleteRelationReq) error {
 	return b.SqlDb.Model(model.Relation{}).Where("from_id = ? AND to_id = ? AND type = ?", rel.FromId, rel.ToId, rel.Type).Delete(&model.Relation{}).Error
+}
+
+// NoteDoc is the document structure for bleve indexing
+type NoteDoc struct {
+	ID      string `json:"id"`
+	Title   string `json:"title"`
+	Content string `json:"content"`
+}
+
+// IndexNote indexes a note's content in bleve
+func (b *BaseRepo) IndexNote(id string, name string, content string) error {
+	if b.BleveIndex == nil {
+		return nil
+	}
+	doc := map[string]any{
+		"id":      id,
+		"title":   name,
+		"content": content,
+	}
+	return b.BleveIndex.Index(id, doc)
+}
+
+// SearchNotes searches notes using bleve - supports prefix matching (p matches python, py, etc.)
+func (b *BaseRepo) SearchNotes(queryStr string) ([]model.NoteSearchResult, error) {
+	if b.BleveIndex == nil {
+		return nil, errors.New("bleve index not initialized")
+	}
+	if queryStr == "" {
+		return nil, nil
+	}
+
+	// 使用 QueryStringQuery 实现字段匹配
+	query := bleve.NewQueryStringQuery("title:*" + queryStr + "* OR content:*" + queryStr + "*")
+	req := bleve.NewSearchRequest(query)
+	req.Size = 20
+	req.Fields = []string{"title", "content"}
+
+	results, err := b.BleveIndex.Search(req)
+	if err != nil {
+		return nil, err
+	}
+
+	var searchResults []model.NoteSearchResult
+	for _, hit := range results.Hits {
+		title := ""
+		content := ""
+
+		if hit.Fields != nil {
+			if t, ok := hit.Fields["title"].(string); ok {
+				title = t
+			}
+			if c, ok := hit.Fields["content"].(string); ok {
+				content = c
+			}
+		}
+
+		searchResults = append(searchResults, model.NoteSearchResult{
+			ID:      hit.ID,
+			Title:   title,
+			Content: content,
+		})
+	}
+	return searchResults, nil
+}
+
+// DeleteNoteFromIndex removes a note from the bleve index
+func (b *BaseRepo) DeleteNoteFromIndex(id string) error {
+	if b.BleveIndex == nil {
+		return nil
+	}
+	return b.BleveIndex.Delete(id)
 }

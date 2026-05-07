@@ -139,6 +139,16 @@ func (a *App) DeleteTagRelation(tagID string, noteID string) error {
 	})
 }
 
+func (a *App) SearchNotes(query string) ([]model.NoteSearchResult, error) {
+	return a.NodeService.SearchNotes(query)
+}
+
+func (a *App) IndexNote(id string, name string, content string) error {
+	return a.NodeService.IndexNote(id, name, content)
+}
+
+// ============================================================
+
 // ============================================================
 // 5. 笔记深度管理 (Note Management)
 // ============================================================

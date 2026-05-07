@@ -20,7 +20,11 @@ func InitializeApp(basePath string) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	baseRepo := repo.NewBaseRepo(gormDB, basePath)
+	index, err := db.BleveInit(basePath)
+	if err != nil {
+		return nil, err
+	}
+	baseRepo := repo.NewBaseRepo(gormDB, basePath, index)
 	nodeService := service.NewNodeService(baseRepo)
 	relationService := service.NewRelationService(baseRepo)
 	app := NewApp(baseRepo, nodeService, relationService)

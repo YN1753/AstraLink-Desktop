@@ -191,6 +191,9 @@ func (n *NodeService) CreateNote(req model.CreateNoteReq) (string, error) { //�
 		}
 	}
 
+	// Index note content in bleve
+	_ = n.base.IndexNote(node.ID, req.Name, req.File)
+
 	return id, nil
 }
 
@@ -245,6 +248,11 @@ func (n *NodeService) DeleteNode(id string) error { //删除节点包括本地�
 		return err
 	}
 
+	// Remove from bleve index if it's a note
+	if node.Type == "note" {
+		_ = n.base.DeleteNoteFromIndex(id)
+	}
+
 	return n.base.DeleteNodeById(id)
 }
 
@@ -279,7 +287,15 @@ func (n *NodeService) UpdateNodeInfo(req model.UpdateNoteInfoReq) error {
 func (n *NodeService) UpdateNoteContent(id string, content string) error {
 	file := strings.NewReader(content)
 	_, err := n.base.SaveLocalFile("notes", file, id+".md")
-	return err
+	if err != nil {
+		return err
+	}
+	// Re-index note content in bleve
+	node, err := n.base.GetNodeById(id)
+	if err == nil {
+		_ = n.base.IndexNote(id, node.Name, content)
+	}
+	return nil
 }
 
 func (n *NodeService) GetRelationById(id string) (model.D3Graph, error) {
@@ -350,4 +366,16 @@ func (n *NodeService) GetTagsWithCount() ([]model.TagWithCount, error) {
 		})
 	}
 	return result, nil
+}
+
+func (n *NodeService) SearchNotes(query string) ([]model.NoteSearchResult, error) {
+	return n.base.SearchNotes(query)
+}
+
+func (n *NodeService) IndexNote(id string, name string, content string) error {
+	return n.base.IndexNote(id, name, content)
+}
+
+func (n *NodeService) DeleteNoteIndex(id string) error {
+	return n.base.DeleteNoteFromIndex(id)
 }

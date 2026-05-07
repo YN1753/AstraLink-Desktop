@@ -16,6 +16,7 @@ func InitializeApp(basePath string) (*App, error) {
 	wire.Build(
 		// 1. 基础连接
 		db.InitDB,
+		db.BleveInit,
 		//2. 仓储层
 		repo.NewBaseRepo,
 

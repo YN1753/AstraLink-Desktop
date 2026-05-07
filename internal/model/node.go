@@ -93,3 +93,9 @@ type TagMessage struct {
 	Id   string `json:"id"`
 	Name string `json:"name"`
 }
+
+type NoteSearchResult struct {
+	ID      string `json:"id"`
+	Title   string `json:"title"`
+	Content string `json:"content"`
+}
