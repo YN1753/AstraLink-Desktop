@@ -131,6 +131,14 @@ func (a *App) GetTagsByNodeID(nodeID string) (*[]model.TagMessage, error) {
 	return a.RelationService.GetTagsByNodeID(nodeID)
 }
 
+func (a *App) DeleteTagRelation(tagID string, noteID string) error {
+	return a.RelationService.DeleteRelation(model.DeleteRelationReq{
+		FromId: tagID,
+		ToId:   noteID,
+		Type:   "tag",
+	})
+}
+
 // ============================================================
 // 5. 笔记深度管理 (Note Management)
 // ============================================================

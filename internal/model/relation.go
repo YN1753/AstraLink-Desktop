@@ -10,3 +10,9 @@ type Relation struct {
 func (Relation) TableName() string {
 	return "relations"
 }
+
+type DeleteRelationReq struct {
+	FromId string `json:"fromId"`
+	ToId   string `json:"toId"`
+	Type   string `json:"type"`
+}

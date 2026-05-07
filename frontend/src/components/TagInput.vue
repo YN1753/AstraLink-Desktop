@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
-import { GetTagsWithCount, CreateTag } from '../../wailsjs/go/main/App'
+import { GetTagsWithCount, CreateTag, DeleteTagRelation } from '../../wailsjs/go/main/App'
 
 const props = defineProps({
   noteId: String,
@@ -10,7 +10,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['tags-changed', 'refresh-tags'])
+const emit = defineEmits(['tags-changed', 'refresh-tags', 'tag-removed'])
 
 const allTags = ref([])
 const selectedTags = ref([])
@@ -52,9 +52,20 @@ function addTag(tag) {
 }
 
 // Remove tag from selected
-function removeTag(tag) {
+async function removeTag(tag) {
+  // If noteId exists and is not a new note, delete the relation
+  if (props.noteId && !props.noteId.startsWith('new-')) {
+    try {
+      await DeleteTagRelation(tag.id, props.noteId)
+      // Refresh the tag cache
+      await loadTags()
+    } catch (e) {
+      console.error('删除标签关联失败:', e)
+    }
+  }
   selectedTags.value = selectedTags.value.filter(t => t.id !== tag.id)
   emit('tags-changed', selectedTags.value)
+  emit('tag-removed', tag)
 }
 
 // Create new tag

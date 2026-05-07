@@ -43,3 +43,7 @@ func (r *RelationService) GetTagsByNodeID(nodeID string) (*[]model.TagMessage, e
 	nodeMessage, err := r.base.GetTagById(nodes)
 	return &nodeMessage, err
 }
+
+func (r *RelationService) DeleteRelation(req model.DeleteRelationReq) error {
+	return r.base.DeleteRelation(req)
+}

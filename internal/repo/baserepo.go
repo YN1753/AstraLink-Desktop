@@ -191,9 +191,9 @@ func (b *BaseRepo) GetNodesByRootPath(rootPath string) ([]model.Node, error) {
 	err := b.SqlDb.Where("path = ? OR path LIKE ?", rootPath, rootPath+"/%").Find(&nodes).Error
 	return nodes, err
 }
-func (n *BaseRepo) GetRecentNotes(limit int) ([]model.Node, error) {
+func (b *BaseRepo) GetRecentNotes(limit int) ([]model.Node, error) {
 	var notes []model.Node
-	err := n.SqlDb.Where("type = ?", "note").
+	err := b.SqlDb.Where("type = ?", "note").
 		Order("update_time DESC").
 		Limit(limit).
 		Find(&notes).Error
@@ -203,9 +203,9 @@ func (n *BaseRepo) GetRecentNotes(limit int) ([]model.Node, error) {
 	return notes, nil
 }
 
-func (n *BaseRepo) GetTagById(nodes []string) ([]model.TagMessage, error) {
+func (b *BaseRepo) GetTagById(nodes []string) ([]model.TagMessage, error) {
 	var res []model.TagMessage
-	err := n.SqlDb.Model(model.Node{}).Where("id IN ?", nodes).Find(&res).Error
+	err := b.SqlDb.Model(model.Node{}).Where("id IN ?", nodes).Find(&res).Error
 	return res, err
 }
 
@@ -229,4 +229,8 @@ func (b *BaseRepo) GetTagsByNodeID(nodeID string) (*[]model.Relation, error) {
 		return nil, err
 	}
 	return &relations, nil
+}
+
+func (b *BaseRepo) DeleteRelation(rel model.DeleteRelationReq) error {
+	return b.SqlDb.Model(model.Relation{}).Where("from_id = ? AND to_id = ? AND type = ?", rel.FromId, rel.ToId, rel.Type).Delete(&model.Relation{}).Error
 }
