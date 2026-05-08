@@ -308,6 +308,7 @@ onUnmounted(() => {
           @back="editingNoteId = null; currentView = previousView"
           @saved="handleEditorSaved"
           @refresh-tags="refreshTags"
+          @open-note="openNoteById"
       />
     </main>
 

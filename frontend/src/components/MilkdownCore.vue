@@ -291,6 +291,7 @@ function handleEditorClick(e) {
 let currentHoverLink = null
 let linkPreviewEl = null
 let linkPreviewContainer = null
+let mouseIsOverTooltip = false
 
 function handleEditorHover(e) {
   const link = e.target.closest('.note-link') || e.target.closest('a[href^="note:"]')
@@ -307,6 +308,7 @@ function handleEditorHover(e) {
 
 function hideLinkPreview() {
   clearTimeout(hoverTimeout)
+  if (mouseIsOverTooltip) return
   if (linkPreviewContainer) {
     linkPreviewContainer.style.display = 'none'
   }
@@ -323,6 +325,17 @@ async function showLinkPreview(link) {
   if (!linkPreviewContainer) {
     linkPreviewContainer = document.createElement('div')
     linkPreviewContainer.className = 'link-preview-tooltip'
+    linkPreviewContainer.addEventListener('click', () => {
+      const id = linkPreviewContainer.dataset.noteId
+      if (id) emit('open-note', id)
+    })
+    linkPreviewContainer.addEventListener('mouseenter', () => {
+      mouseIsOverTooltip = true
+    })
+    linkPreviewContainer.addEventListener('mouseleave', () => {
+      mouseIsOverTooltip = false
+      hideLinkPreview()
+    })
     document.body.appendChild(linkPreviewContainer)
   }
   const noteId = link.getAttribute('data-note-id') || link.getAttribute('href')?.replace(/^note:/, '')
@@ -352,7 +365,8 @@ async function showLinkPreview(link) {
     const left = Math.min(rect.left, window.innerWidth - 360)
     const top = rect.bottom + 12
 
-    linkPreviewContainer.style.cssText = `position:fixed;left:${left}px;top:${top}px;z-index:9999;width:320px;background:rgba(20,20,20,0.98);backdrop-filter:blur(20px);border:1px solid var(--glass-border);border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,0.7);overflow:hidden;display:block;`
+    linkPreviewContainer.dataset.noteId = noteId
+    linkPreviewContainer.style.cssText = `position:fixed;left:${left}px;top:${top}px;z-index:9999;width:320px;background:var(--glass-bg);backdrop-filter:blur(20px);border:1px solid var(--glass-border);border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,0.4);overflow:hidden;display:block;cursor:pointer;`
 
     linkPreviewContainer.innerHTML = `
       <div style="padding:14px 16px;border-bottom:1px solid var(--glass-border);display:flex;align-items:center;gap:10px;">
