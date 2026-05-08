@@ -157,6 +157,10 @@ func (a *App) GetNoteContent(id string) (string, error) {
 	return a.NodeService.GetNoteContent(id)
 }
 
+func (a *App) GetNotesByTag(tagId string) ([]model.NoteSearchResult, error) {
+	return a.NodeService.GetNotesByTag(tagId)
+}
+
 func (a *App) UpdateNoteContent(id string, content string) error {
 	return a.NodeService.UpdateNoteContent(id, content)
 }

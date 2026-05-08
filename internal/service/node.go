@@ -266,6 +266,10 @@ func (n *NodeService) GetAllTag() (*[]model.Node, error) { //获取所有tag
 func (n *NodeService) GetNoteContent(id string) (string, error) { //获取笔记context
 	return n.base.GetNoteContent(id)
 }
+
+func (n *NodeService) GetNotesByTag(tagId string) ([]model.NoteSearchResult, error) {
+	return n.base.GetNotesByTag(tagId)
+}
 func (n *NodeService) UpdateNodeInfo(req model.UpdateNoteInfoReq) error {
 	node, err := n.base.GetNodeById(req.Id)
 	if err != nil {
@@ -378,4 +382,18 @@ func (n *NodeService) IndexNote(id string, name string, content string) error {
 
 func (n *NodeService) DeleteNoteIndex(id string) error {
 	return n.base.DeleteNoteFromIndex(id)
+}
+
+func (n *NodeService) GetNodeByTag(tags []string) ([]model.Node, error) {
+	var nodes []model.Node
+	var nodeId []string
+	rel, err := n.base.GetNodeIdByTags(tags)
+	if err != nil {
+		return nodes, err
+	}
+	for _, id := range rel {
+		nodeId = append(nodeId, id.ToID)
+	}
+	nodes, err = n.base.GetNodeByNodeId(tags)
+	return nodes, nil
 }

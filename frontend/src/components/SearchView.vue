@@ -1,7 +1,7 @@
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { NInput, NButton, NEmpty, NSpin } from 'naive-ui'
-import { SearchNotes } from '../../wailsjs/go/main/App'
+import { SearchNotes, GetTagsWithCount, GetNotesByTag } from '../../wailsjs/go/main/App'
 
 const props = defineProps(['user'])
 const emit = defineEmits(['close', 'open-note'])
@@ -11,6 +11,39 @@ const searchQuery = ref('')
 const isSearching = ref(false)
 const searchResults = ref([])
 const recentSearches = ref([])
+const hotTags = ref([])
+
+// 加载热门标签
+async function loadHotTags() {
+  try {
+    const tags = await GetTagsWithCount()
+    hotTags.value = tags || []
+  } catch (e) {
+    console.error('加载标签失败:', e)
+    hotTags.value = []
+  }
+}
+
+// 组件挂载时加载热门标签
+onMounted(() => {
+  loadHotTags()
+})
+
+// 通过标签搜索笔记 - 调用GetNotesByTag接口
+async function searchByTag(tag) {
+  isSearching.value = true
+  searchResults.value = []
+
+  try {
+    const results = await GetNotesByTag(tag.id)
+    searchResults.value = results || []
+  } catch (e) {
+    console.error('标签搜索失败:', e)
+    searchResults.value = []
+  }
+
+  isSearching.value = false
+}
 
 // 真实搜索方法 - 使用 Bleve 全文搜索
 async function performSearch(query) {
@@ -124,7 +157,7 @@ function highlightMatch(text, query) {
         </div>
 
         <!-- 无结果 -->
-        <div v-else-if="searchQuery.trim()" class="no-results">
+        <div v-else-if="searchResults.length === 0 && searchQuery.trim()" class="no-results">
           <NEmpty description="未找到相关笔记">
             <template #extra>
               <span class="hint-text">尝试使用不同的关键词</span>
@@ -133,7 +166,7 @@ function highlightMatch(text, query) {
         </div>
 
         <!-- 最近搜索 -->
-        <div v-else class="recent-searches">
+        <div v-else-if="searchResults.length === 0 && !searchQuery.trim()" class="recent-searches">
           <div class="section-title">最近搜索</div>
           <div class="recent-list">
             <div
@@ -149,11 +182,12 @@ function highlightMatch(text, query) {
 
           <div class="section-title" style="margin-top: 30px;">热门标签</div>
           <div class="tags-cloud">
-            <span class="tag-item"># 项目</span>
-            <span class="tag-item"># 学习</span>
-            <span class="tag-item"># 工作</span>
-            <span class="tag-item"># 总结</span>
-            <span class="tag-item"># 读书</span>
+            <span
+              v-for="tag in hotTags"
+              :key="tag.id"
+              class="tag-item"
+              @click="searchByTag(tag)"
+            ># {{ tag.name }} ({{ tag.noteCount }})</span>
           </div>
         </div>
       </div>

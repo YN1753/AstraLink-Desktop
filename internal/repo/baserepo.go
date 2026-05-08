@@ -185,12 +185,6 @@ func (b *BaseRepo) GetNodeMessageByPath(path string, id string) ([]model.Node, e
 	err := b.SqlDb.Model(model.Node{}).Where("path LIKE ?", path).Find(&nodes).Error
 	return nodes, err
 }
-func (b *BaseRepo) GetNodesByRootPath(rootPath string) ([]model.Node, error) {
-	var nodes []model.Node
-	// 根节点自身 (path == "root") + 所有子节点 (path LIKE "root/%")
-	err := b.SqlDb.Where("path = ? OR path LIKE ?", rootPath, rootPath+"/%").Find(&nodes).Error
-	return nodes, err
-}
 func (b *BaseRepo) GetRecentNotes(limit int) ([]model.Node, error) {
 	var notes []model.Node
 	err := b.SqlDb.Where("type = ?", "note").
@@ -217,7 +211,7 @@ func (b *BaseRepo) GetTagRelationCounts() (map[string]int, error) {
 	}
 	counts := make(map[string]int)
 	for _, rel := range relations {
-		counts[rel.ToID]++
+		counts[rel.FromID]++ // from_id is the tag ID (from LinkTagToNode)
 	}
 	return counts, nil
 }
@@ -235,11 +229,45 @@ func (b *BaseRepo) DeleteRelation(rel model.DeleteRelationReq) error {
 	return b.SqlDb.Model(model.Relation{}).Where("from_id = ? AND to_id = ? AND type = ?", rel.FromId, rel.ToId, rel.Type).Delete(&model.Relation{}).Error
 }
 
-// NoteDoc is the document structure for bleve indexing
-type NoteDoc struct {
-	ID      string `json:"id"`
-	Title   string `json:"title"`
-	Content string `json:"content"`
+// GetNoteIdsByTag 获取指定标签关联的所有笔记ID
+func (b *BaseRepo) GetNoteIdsByTag(tagId string) ([]string, error) {
+	var relations []model.Relation
+	// from_id = tag, to_id = note (from LinkTagToNode: FromID=tagID, ToID=nodeID)
+	err := b.SqlDb.Where("from_id = ? AND type = ?", tagId, "tag").Find(&relations).Error
+	if err != nil {
+		return nil, err
+	}
+	var noteIds []string
+	for _, rel := range relations {
+		noteIds = append(noteIds, rel.ToID)
+	}
+	return noteIds, nil
+}
+
+// GetNotesByTag 获取指定标签关联的所有笔记
+func (b *BaseRepo) GetNotesByTag(tagId string) ([]model.NoteSearchResult, error) {
+	noteIds, err := b.GetNoteIdsByTag(tagId)
+	if err != nil {
+		return nil, err
+	}
+	if len(noteIds) == 0 {
+		return []model.NoteSearchResult{}, nil
+	}
+	var notes []model.Node
+	err = b.SqlDb.Where("id IN ?", noteIds).Find(&notes).Error
+	if err != nil {
+		return nil, err
+	}
+	var results []model.NoteSearchResult
+	for _, note := range notes {
+		content, _ := b.GetNoteContent(note.ID)
+		results = append(results, model.NoteSearchResult{
+			ID:      note.ID,
+			Title:   note.Name,
+			Content: content,
+		})
+	}
+	return results, nil
 }
 
 // IndexNote indexes a note's content in bleve
@@ -304,4 +332,16 @@ func (b *BaseRepo) DeleteNoteFromIndex(id string) error {
 		return nil
 	}
 	return b.BleveIndex.Delete(id)
+}
+
+func (b *BaseRepo) GetNodeIdByTags(tags []string) ([]model.Relation, error) {
+	var relations []model.Relation
+	err := b.SqlDb.Model(model.Relation{}).Where("from_id IN ? AND type = ?", tags, "tag").Find(&relations).Error
+	return relations, err
+}
+
+func (b *BaseRepo) GetNodeByNodeId(nodeId []string) ([]model.Node, error) {
+	var nodes []model.Node
+	err := b.SqlDb.Model(model.Node{}).Where("id IN ?", nodeId).Find(&nodes).Error
+	return nodes, err
 }
