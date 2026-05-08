@@ -3,10 +3,11 @@ import { ref, computed, watch, onMounted } from 'vue'
 import { MilkdownProvider } from '@milkdown/vue'
 import MilkdownCore from './MilkdownCore.vue'
 import TagInput from './TagInput.vue'
+import LinkPickerView from './LinkPickerView.vue'
 import { GetNoteContent, CreateNote, UpdateNoteContent, UpdateNodeInfo, LinkTagToNode, GetTagsWithCount, GetTagsByNodeID } from '../../wailsjs/go/main/App'
 
 const props = defineProps(['status', 'noteId', 'user', 'newNoteRequest'])
-const emit = defineEmits(['saved', 'back', 'refresh-tags'])
+const emit = defineEmits(['saved', 'back', 'refresh-tags', 'open-note'])
 
 const openTabs = ref([])
 const currentTabId = ref(null)
@@ -191,6 +192,28 @@ function goHome() {
 }
 
 const noteTags = ref({})
+const linkPickerPos = ref(null)
+const editorCoreRef = ref(null)
+
+function showLinkPicker(insertPos) {
+  linkPickerPos.value = insertPos
+}
+
+function hideLinkPicker() {
+  linkPickerPos.value = null
+}
+
+function handleLinkSelect(note) {
+  if (linkPickerPos.value === null) return
+  const editorRef = editorCoreRef.value
+  if (!editorRef) return
+  editorRef.insertLink(note.id, note.title)
+  hideLinkPicker()
+}
+
+function handleOpenNoteFromLink(noteId) {
+  emit('open-note', noteId)
+}
 
 async function loadNoteTags(noteId) {
   if (!noteId || noteId.startsWith('new-')) {
@@ -322,11 +345,26 @@ async function linkTagsToNote(noteId, tags) {
         <!-- Editor content -->
         <div class="editor-scroll-area">
           <MilkdownProvider>
-            <MilkdownCore :key="currentTabId" v-model="currentContent" @update:modelValue="onContentChange" />
+            <MilkdownCore
+              ref="editorCoreRef"
+              :key="currentTabId"
+              v-model="currentContent"
+              @update:modelValue="onContentChange"
+              @show-link-picker="showLinkPicker"
+              @open-note="handleOpenNoteFromLink"
+            />
           </MilkdownProvider>
         </div>
       </div>
     </div>
+
+    <!-- Link Picker Modal -->
+    <LinkPickerView
+      v-if="linkPickerPos !== null"
+      :insertPos="linkPickerPos"
+      @close="hideLinkPicker"
+      @select-note="handleLinkSelect"
+    />
   </div>
 </template>
 

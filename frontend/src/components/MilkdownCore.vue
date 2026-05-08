@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { Milkdown, useEditor } from '@milkdown/vue'
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from '@milkdown/core'
 import { commonmark } from '@milkdown/preset-commonmark'
@@ -12,6 +12,8 @@ import { clipboard } from '@milkdown/plugin-clipboard'
 import { TooltipProvider } from '@milkdown/plugin-tooltip'
 import { SlashProvider } from '@milkdown/plugin-slash'
 import { nord } from '@milkdown/theme-nord'
+import { parserCtx, serializerCtx } from '@milkdown/core'
+import { SearchNotes, GetNoteContent } from '../../wailsjs/go/main/App'
 
 import Prism from 'prismjs'
 window.Prism = Prism
@@ -31,14 +33,18 @@ import 'prismjs/components/prism-yaml'
 import 'prismjs/components/prism-markdown'
 
 const props = defineProps(['modelValue'])
-const emit = defineEmits(['update:modelValue'])
+const emit = defineEmits(['update:modelValue', 'open-note', 'show-link-picker'])
 
 let tooltipProvider = null
 let slashProvider = null
+let linkProvider = null
 let tooltipEl = null
 let slashEl = null
+let linkEl = null
 let pollTimer = null
 let lastSelection = null
+let linkInsertPos = null
+let hoverTimeout = null
 
 function createTooltipElement() {
   const el = document.createElement('div')
@@ -88,6 +94,283 @@ function createSlashElement() {
     if (item) { e.preventDefault(); executeSlashCommand(item.dataset.action) }
   })
   return el
+}
+
+function createBidirectionalLinkElement() {
+  const el = document.createElement('div')
+  el.className = 'md-link-dropdown'
+  el.style.cssText = 'position:absolute;z-index:9999;display:none;min-width:240px;max-height:320px;overflow-y:auto;padding:6px;background:rgba(20,20,20,0.98);backdrop-filter:blur(20px);border:1px solid var(--glass-border);border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,0.7);'
+  el.innerHTML = '<div class="link-search-input" style="padding:8px 12px;border-bottom:1px solid var(--glass-border);"><input type="text" placeholder="搜索笔记..." style="width:100%;background:transparent;border:none;outline:none;color:var(--text-primary);font-size:13px;" /></div><div class="link-results" style="max-height:260px;overflow-y:auto;"></div>'
+  return el
+}
+
+function showLinkDropdown(coords, searchQuery = '') {
+  if (!linkEl || !linkProvider) return
+  linkProvider.show({
+    getBoundingClientRect() {
+      return {
+        width: 0, height: 0,
+        x: coords.left, y: coords.bottom + 8,
+        top: coords.top, left: coords.left,
+        right: coords.left, bottom: coords.bottom + 8,
+      }
+    }
+  })
+  const input = linkEl.querySelector('input')
+  if (input) {
+    input.value = searchQuery
+    input.focus()
+  }
+  if (searchQuery) {
+    searchLinkNotes(searchQuery)
+  } else {
+    searchLinkNotes('')
+  }
+}
+
+function hideLinkDropdown() {
+  if (linkProvider) linkProvider.hide()
+  linkInsertPos = null
+}
+
+let linkSearchTimeout = null
+async function searchLinkNotes(query) {
+  if (!linkEl) return
+  const resultsEl = linkEl.querySelector('.link-results')
+  if (!resultsEl) return
+  try {
+    const results = await SearchNotes(query || '')
+    if (results.length === 0) {
+      resultsEl.innerHTML = '<div style="padding:16px;text-align:center;color:var(--text-secondary);font-size:12px;">未找到笔记</div>'
+      return
+    }
+    resultsEl.innerHTML = results.slice(0, 10).map(note => `
+      <div class="link-result-item" data-id="${note.id}" data-title="${note.title || note.name || '未命名'}" style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;cursor:pointer;color:var(--text-secondary);transition:all 0.12s;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="flex-shrink:0;color:var(--accent);">
+          <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+        </svg>
+        <span style="font-size:13px;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${note.title || note.name || '未命名'}</span>
+      </div>
+    `).join('')
+  } catch (e) {
+    resultsEl.innerHTML = '<div style="padding:16px;text-align:center;color:var(--text-secondary);font-size:12px;">搜索失败</div>'
+  }
+}
+
+function insertBidirectionalLink(id, title) {
+  const editor = get()
+  if (!editor || linkInsertPos === null) return
+  editor.action((ctx) => {
+    const view = ctx.get(editorViewCtx)
+    if (!view) return
+    const { state, dispatch } = view
+    const { tr } = state
+    const linkText = `[[${id}|${title}]]`
+    tr.insertText(linkText, linkInsertPos)
+    dispatch(tr)
+    view.focus()
+  })
+  hideLinkDropdown()
+}
+
+function handleLinkInput(e) {
+  if (e.target.classList.contains('link-search-input') || e.target.closest('.link-search-input')) {
+    const input = e.target.tagName === 'INPUT' ? e.target : e.target.querySelector('input')
+    if (input) {
+      clearTimeout(linkSearchTimeout)
+      linkSearchTimeout = setTimeout(() => {
+        searchLinkNotes(input.value)
+      }, 200)
+    }
+  }
+}
+
+function handleLinkClick(e) {
+  const item = e.target.closest('.link-result-item')
+  if (item) {
+    e.preventDefault()
+    e.stopPropagation()
+    insertBidirectionalLink(item.dataset.id, item.dataset.title)
+  }
+}
+
+function insertLink(id, title) {
+  const editor = get()
+  if (!editor || linkInsertPos === null) return
+
+  const insertPos = linkInsertPos
+  linkInsertPos = null
+
+  editor.action((ctx) => {
+    const view = ctx.get(editorViewCtx)
+    if (!view) return
+    const { state } = view
+    const { schema, tr } = state
+
+    const linkTextLength = 2
+    const pos = insertPos - linkTextLength
+
+    // 方式1: 尝试作为 link 节点插入 (Milkdown 7.x)
+    const linkNodeType = schema.nodes.link
+    if (linkNodeType) {
+      try {
+        const linkNode = linkNodeType.create(
+          { href: `note:${id}`, title: '' },
+          schema.text(title)
+        )
+        const newTr = tr.delete(insertPos - linkTextLength, insertPos)
+          .insert(pos, linkNode)
+        view.dispatch(newTr)
+        view.focus()
+        return
+      } catch (e) {
+        console.error('[insertLink] Node insert failed:', e)
+      }
+    }
+
+    // 方式2: 尝试作为 link mark 插入
+    const linkMarkType = schema.marks.link
+    if (linkMarkType) {
+      try {
+        const mark = linkMarkType.create({ href: `note:${id}`, title: '' })
+        const textNode = schema.text(title, [mark])
+        const newTr = tr.delete(insertPos - linkTextLength, insertPos)
+          .insert(pos, textNode)
+        view.dispatch(newTr)
+        view.focus()
+        return
+      } catch (e) {
+        console.error('[insertLink] Mark insert failed:', e)
+      }
+    }
+
+    // 方式3: 回退到文本插入，然后重新解析文档
+    const newTr = tr.delete(insertPos - linkTextLength, insertPos)
+      .insertText(`[${title}](note:${id})`, pos)
+    view.dispatch(newTr)
+    view.focus()
+  })
+
+  // 方式3 后续: 延迟重新解析整个文档，让 Milkdown 将文本解析为 link 节点
+  setTimeout(() => {
+    if (!editor) return
+    editor.action((ctx) => {
+      try {
+        const view = ctx.get(editorViewCtx)
+        const parser = ctx.get(parserCtx)
+        const serializer = ctx.get(serializerCtx)
+        if (!view || !parser || !serializer) return
+
+        const markdown = serializer(view.state.doc)
+        const newDoc = parser(markdown)
+        if (!newDoc) return
+
+        const tr = view.state.tr
+        const docSize = view.state.doc.content.size
+        tr.replaceWith(0, docSize, newDoc)
+        view.dispatch(tr)
+      } catch (e) {
+        console.error('[insertLink] Re-parse failed:', e)
+      }
+    })
+  }, 50)
+}
+
+defineExpose({ insertLink })
+
+function handleEditorClick(e) {
+  const link = e.target.closest('.note-link') || e.target.closest('a[href^="note:"]')
+  if (link) {
+    e.preventDefault()
+    const noteId = link.getAttribute('data-note-id') || link.getAttribute('href')?.replace(/^note:/, '')
+    if (noteId) emit('open-note', noteId)
+  }
+}
+
+let currentHoverLink = null
+let linkPreviewEl = null
+let linkPreviewContainer = null
+
+function handleEditorHover(e) {
+  const link = e.target.closest('.note-link') || e.target.closest('a[href^="note:"]')
+  if (link && link !== currentHoverLink) {
+    currentHoverLink = link
+    clearTimeout(hoverTimeout)
+    hoverTimeout = setTimeout(() => {
+      showLinkPreview(link)
+    }, 400)
+  } else if (!link && currentHoverLink) {
+    hideLinkPreview()
+  }
+}
+
+function hideLinkPreview() {
+  clearTimeout(hoverTimeout)
+  if (linkPreviewContainer) {
+    linkPreviewContainer.style.display = 'none'
+  }
+  currentHoverLink = null
+}
+
+function escapeHtml(text) {
+  const el = document.createElement('div')
+  el.textContent = text
+  return el.innerHTML
+}
+
+async function showLinkPreview(link) {
+  if (!linkPreviewContainer) {
+    linkPreviewContainer = document.createElement('div')
+    linkPreviewContainer.className = 'link-preview-tooltip'
+    document.body.appendChild(linkPreviewContainer)
+  }
+  const noteId = link.getAttribute('data-note-id') || link.getAttribute('href')?.replace(/^note:/, '')
+  if (!noteId) return
+
+  try {
+    const content = await GetNoteContent(noteId)
+
+    let title = '未命名'
+    const titleMatch = content?.match(/^#\s+(.+)$/m)
+    if (titleMatch) title = titleMatch[1].trim()
+
+    let previewText = content || ''
+    previewText = previewText.replace(/^#\s+.+$/m, '').trim()
+    previewText = previewText
+      .replace(/\*\*(.+?)\*\*/g, '$1')
+      .replace(/\*(.+?)\*/g, '$1')
+      .replace(/`(.+?)`/g, '$1')
+      .replace(/\[(.+?)\]\(.+?\)/g, '$1')
+      .replace(/!\[.*?\]\(.+?\)/g, '[图片]')
+
+    const maxLen = 280
+    const preview = previewText.substring(0, maxLen) + (previewText.length > maxLen ? '...' : '')
+    const wordCount = content?.length || 0
+
+    const rect = link.getBoundingClientRect()
+    const left = Math.min(rect.left, window.innerWidth - 360)
+    const top = rect.bottom + 12
+
+    linkPreviewContainer.style.cssText = `position:fixed;left:${left}px;top:${top}px;z-index:9999;width:320px;background:rgba(20,20,20,0.98);backdrop-filter:blur(20px);border:1px solid var(--glass-border);border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,0.7);overflow:hidden;display:block;`
+
+    linkPreviewContainer.innerHTML = `
+      <div style="padding:14px 16px;border-bottom:1px solid var(--glass-border);display:flex;align-items:center;gap:10px;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:var(--accent);flex-shrink:0;">
+          <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+        </svg>
+        <span style="color:var(--text-primary);font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(title)}</span>
+      </div>
+      <div style="padding:14px 16px;color:var(--text-secondary);font-size:12px;line-height:1.7;white-space:pre-wrap;word-break:break-word;max-height:200px;overflow-y:auto;">${escapeHtml(preview || '空白笔记')}</div>
+      <div style="padding:10px 16px;border-top:1px solid var(--glass-border);color:var(--text-secondary);font-size:11px;opacity:0.6;display:flex;align-items:center;justify-content:space-between;">
+        <span>点击打开笔记</span>
+        <span style="font-size:10px;">${wordCount} 字</span>
+      </div>
+    `
+  } catch (e) {
+    if (linkPreviewContainer) linkPreviewContainer.style.display = 'none'
+  }
 }
 
 function executeCommand(action) {
@@ -273,11 +556,17 @@ const { get } = useEditor((root) => {
 onMounted(() => {
   tooltipEl = createTooltipElement()
   slashEl = createSlashElement()
+  linkEl = createBidirectionalLinkElement()
   document.body.appendChild(tooltipEl)
   document.body.appendChild(slashEl)
+  document.body.appendChild(linkEl)
 
   tooltipProvider = new TooltipProvider({ content: tooltipEl, debounce: 50 })
   slashProvider = new SlashProvider({ content: slashEl, debounce: 0, offset: 8 })
+  linkProvider = new SlashProvider({ content: linkEl, debounce: 0, offset: 8 })
+
+  linkEl.addEventListener('input', handleLinkInput)
+  linkEl.addEventListener('click', handleLinkClick)
 
   pollTimer = setInterval(() => {
     const editor = get()
@@ -318,6 +607,18 @@ onMounted(() => {
             slashProvider.hide()
           }
         }
+        if (view) {
+          const { $from } = view.state.selection
+          const lineTextBefore = $from.parent.textBetween(0, $from.parentOffset)
+          const endsWithLink = lineTextBefore.endsWith('[[') || lineTextBefore.endsWith(' [[')
+          if (endsWithLink) {
+            const pos = $from.pos
+            if (linkInsertPos !== pos) {
+              linkInsertPos = pos
+              emit('show-link-picker', pos)
+            }
+          }
+        }
       } catch (e) {}
     })
   }, 100)
@@ -325,15 +626,19 @@ onMounted(() => {
 
 onUnmounted(() => {
   if (pollTimer) clearInterval(pollTimer)
+  if (hoverTimeout) clearTimeout(hoverTimeout)
   if (tooltipProvider) tooltipProvider.destroy()
   if (slashProvider) slashProvider.destroy()
+  if (linkProvider) linkProvider.destroy()
   if (tooltipEl?.parentNode) tooltipEl.parentNode.removeChild(tooltipEl)
   if (slashEl?.parentNode) slashEl.parentNode.removeChild(slashEl)
+  if (linkEl?.parentNode) linkEl.parentNode.removeChild(linkEl)
+  if (linkPreviewContainer?.parentNode) linkPreviewContainer.parentNode.removeChild(linkPreviewContainer)
 })
 </script>
 
 <template>
-  <div class="milkdown-wrapper">
+  <div class="milkdown-wrapper" @click="handleEditorClick" @mouseover="handleEditorHover" @mouseleave="hideLinkPreview">
     <Milkdown />
   </div>
 </template>
@@ -413,16 +718,101 @@ onUnmounted(() => {
   margin: clamp(8px, 1.5vw, 12px) 0;
 }
 
-/* Links */
-:deep(.ProseMirror a) {
-  color: var(--accent);
+/* Note links rendered by Milkdown default <a> tag - card style */
+:deep(.ProseMirror a[href^="note:"]) {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: rgba(var(--accent-rgb), 0.08);
+  border: 1px solid rgba(var(--accent-rgb), 0.2);
+  border-radius: 8px;
   text-decoration: none;
-  border-bottom: 1px solid transparent;
-  transition: border-color 0.2s;
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+  max-width: 280px;
+  vertical-align: middle;
 }
 
-:deep(.ProseMirror a:hover) {
-  border-bottom-color: var(--accent);
+:deep(.ProseMirror a[href^="note:"]:hover) {
+  background: rgba(var(--accent-rgb), 0.15);
+  border-color: rgba(var(--accent-rgb), 0.4);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+:deep(.ProseMirror a[href^="note:"]::before) {
+  content: '';
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  background-color: var(--accent);
+  opacity: 0.8;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2'%3E%3Cpath d='M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z'/%3E%3Cpolyline points='14 2 14 8 20 8'/%3E%3C/svg%3E");
+  -webkit-mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2'%3E%3Cpath d='M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z'/%3E%3Cpolyline points='14 2 14 8 20 8'/%3E%3C/svg%3E");
+  mask-size: contain;
+  mask-repeat: no-repeat;
+}
+
+/* Note links (custom node view fallback) */
+:deep(.ProseMirror .note-link) {
+  display: inline-block;
+  vertical-align: middle;
+  cursor: pointer;
+  margin: 2px 0;
+}
+
+:deep(.ProseMirror .note-link-inner) {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: rgba(var(--accent-rgb), 0.08);
+  border: 1px solid rgba(var(--accent-rgb), 0.2);
+  border-radius: 8px;
+  transition: all 0.2s;
+  font-size: 13px;
+  max-width: 280px;
+}
+
+:deep(.ProseMirror .note-link:hover .note-link-inner) {
+  background: rgba(var(--accent-rgb), 0.15);
+  border-color: rgba(var(--accent-rgb), 0.4);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+:deep(.ProseMirror .note-link-title) {
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 13px;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+:deep(.ProseMirror a[href^="note:"]) {
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+:deep(.ProseMirror .note-link-icon) {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: var(--accent);
+  opacity: 0.8;
+  display: flex;
+  align-items: center;
 }
 
 /* Strong and emphasis */
@@ -656,5 +1046,14 @@ onUnmounted(() => {
 
 .md-slash-dropdown[data-show="true"] {
   display: block !important;
+}
+
+.md-link-dropdown[data-show="true"] {
+  display: block !important;
+}
+
+.link-result-item:hover {
+  background: rgba(var(--accent-rgb), 0.1) !important;
+  color: var(--text-primary) !important;
 }
 </style>
