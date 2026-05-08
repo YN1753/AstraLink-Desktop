@@ -31,10 +31,6 @@ func (a *App) startup(ctx context.Context) {
 	}
 }
 
-// ============================================================
-// 1. 用户模块 (User Module)
-// ============================================================
-
 func (a *App) CheckUserNode() (*model.Node, error) {
 	return a.NodeService.CheckUserNode()
 }
@@ -55,10 +51,6 @@ func (a *App) UploadAvatar(id string, avatar string) (string, error) {
 	return a.NodeService.UploadAvatar(id, avatar)
 }
 
-// ============================================================
-// 2. 系统全局状态 (System Stats)
-// ============================================================
-
 func (a *App) GetDataSpace() (int64, error) {
 	return a.NodeService.GetDataSpace()
 }
@@ -74,10 +66,6 @@ func (a *App) GetNoteCount() (int64, error) {
 func (a *App) GetGalaxyCount() (int64, error) {
 	return a.NodeService.GetGalaxyCount()
 }
-
-// ============================================================
-// 3. 核心写入与关联 (Mutations)
-// ============================================================
 
 func (a *App) CreateLink(fromID, toID string) error {
 	return a.RelationService.CreateLink(fromID, toID)
@@ -98,10 +86,6 @@ func (a *App) CreateGalaxy(req model.MergeNodeReq) (string, error) {
 func (a *App) DeleteNode(id string) error {
 	return a.NodeService.DeleteNode(id)
 }
-
-// ============================================================
-// 4. 查询 (Queries)
-// ============================================================
 
 func (a *App) GetNodeByType(typename string) (*[]model.Node, error) {
 	return a.SqliteRepo.GetNodeByType(typename)
@@ -146,12 +130,6 @@ func (a *App) SearchNotes(query string) ([]model.NoteSearchResult, error) {
 func (a *App) IndexNote(id string, name string, content string) error {
 	return a.NodeService.IndexNote(id, name, content)
 }
-
-// ============================================================
-
-// ============================================================
-// 5. 笔记深度管理 (Note Management)
-// ============================================================
 
 func (a *App) GetNoteContent(id string) (string, error) {
 	return a.NodeService.GetNoteContent(id)

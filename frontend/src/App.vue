@@ -16,7 +16,6 @@ const systemStatus = ref('READY')
 const editingNoteId = ref(null)
 const newNoteRequest = ref(0)
 
-// 6种主题配置
 const themes = [
   { id: 'nebula', name: '深邃星云', bg: '#050505', text: '#ffffff', accent: '#3b82f6' },
   { id: 'void', name: '星际虚空', bg: '#0a0010', text: '#e8e0f0', accent: '#9d4edd' },
@@ -26,13 +25,11 @@ const themes = [
   { id: 'ancient', name: '古老星图', bg: '#f4ecd8', text: '#5c4b37', accent: '#8b5e3c' },
 ]
 
-// 全局配置
 const config = ref({
   theme: localStorage.getItem('theme') || 'nebula',
   font: localStorage.getItem('font') || 'Inter'
 })
 
-// 用户信息（从 localStorage 恢复 ID）
 const user = ref({
   id: localStorage.getItem('userId') || '',
   username: 'VOYAGER',
@@ -40,7 +37,6 @@ const user = ref({
   avatar: ''
 })
 
-// 存储统计
 const stats = ref({
   noteCount: 0,
   galaxyCount: 0,
@@ -48,50 +44,40 @@ const stats = ref({
   totalSize: 0
 })
 
-// 侧边栏状态
 const sidebarCollapsed = ref(localStorage.getItem('sidebarCollapsed') === 'true')
 const tags = ref([])
 const recentNotes = ref([])
 const selectedTag = ref(null)
 
-// 从后端获取最近笔记
 async function loadRecentNotes() {
   try {
     const notes = await GetRecentNotes(10)
     recentNotes.value = (notes || []).map(n => ({
       id: n.id,
       name: n.name,
-      timestamp: n.update_time ? n.update_time * 1000 : Date.now() // 秒转毫秒
+      timestamp: n.update_time ? n.update_time * 1000 : Date.now()
     }))
-  } catch (e) {
-    console.error('获取最近笔记失败:', e)
-  }
+  } catch (e) {}
 }
 
-// 最近笔记追踪（打开笔记时刷新列表）
 function trackRecentNote(noteId, noteName) {
-  // 从后端重新获取最新列表
   loadRecentNotes()
 }
 
-// 应用主题（CSS [data-theme] 选择器自动处理变量映射）
 function applyTheme(themeId) {
   document.documentElement.setAttribute('data-theme', themeId)
   localStorage.setItem('theme', themeId)
 }
 
-// 应用字体
 function applyFont(fontId) {
   document.body.style.fontFamily = `'${fontId}', sans-serif`
   localStorage.setItem('font', fontId)
 }
 
-// 监听主题变化
 watch(() => config.value.theme, (newTheme) => {
   applyTheme(newTheme)
 })
 
-// 监听字体变化
 watch(() => config.value.font, (newFont) => {
   applyFont(newFont)
 })
@@ -108,10 +94,8 @@ async function init() {
         others: userNode.others || {}
       }
 
-      // 持久化用户 ID
       localStorage.setItem('userId', userNode.id)
 
-      // 从数据库读取主题和字体配置
       if (userNode.others?.theme) {
         config.value.theme = userNode.others.theme
         applyTheme(userNode.others.theme)
@@ -128,7 +112,6 @@ async function init() {
           }
         } catch (e) {}
 
-        // 加载统计数据
         try {
           const [noteCount, galaxyCount, tagCount, totalSize] = await Promise.all([
             GetNoteCount(),
@@ -139,13 +122,11 @@ async function init() {
           stats.value = { noteCount, galaxyCount, tagCount, totalSize }
         } catch (e) {}
 
-        // 加载标签
         try {
           const tagList = await GetTagsWithCount()
           tags.value = tagList || []
         } catch (e) {}
 
-        // 加载最近笔记
         await loadRecentNotes()
       }
     }
@@ -180,7 +161,6 @@ function handleSidebarNewNote() {
   }
 }
 
-// 保存用户配置到数据库
 async function saveUserConfig() {
   if (!user.value.id) return
   try {
@@ -197,12 +177,9 @@ async function saveUserConfig() {
         motto: user.value.motto
       }
     })
-  } catch (e) {
-    console.error('保存配置失败:', e)
-  }
+  } catch (e) {}
 }
 
-// 更新用户资料
 async function handleUpdateUser(updatedUser) {
   user.value = updatedUser
   try {
@@ -217,16 +194,12 @@ async function handleUpdateUser(updatedUser) {
         motto: updatedUser.motto
       }
     })
-  } catch (e) {
-    console.error('更新用户资料失败:', e)
-  }
+  } catch (e) {}
 }
 
-// 编辑器保存回调
 function handleEditorSaved(savedNote) {
   loadRecentNotes()
   refreshTags()
-  // 刷新统计数据
   Promise.all([
     GetNoteCount(),
     GetGalaxyCount(),
@@ -237,24 +210,19 @@ function handleEditorSaved(savedNote) {
   }).catch(() => {})
 }
 
-// 上传头像
 async function handleUpdateAvatar(base64Data) {
   if (!user.value.id) return
   try {
     const path = await UploadAvatar(user.value.id, base64Data)
     if (path) {
-      // 重新获取头像
       const avatar = await GetAvatar(user.value.id)
       if (avatar) {
         user.value.avatar = avatar
       }
     }
-  } catch (e) {
-    console.error('上传头像失败:', e)
-  }
+  } catch (e) {}
 }
 
-// 键盘快捷键
 function handleKeydown(e) {
   if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
     e.preventDefault()
@@ -266,16 +234,14 @@ function handleKeydown(e) {
   }
 }
 
-// 处理标签点击（筛选笔记）
 function handleTagClick(tag) {
   if (selectedTag.value === tag.id) {
-    selectedTag.value = null // 取消选中
+    selectedTag.value = null
   } else {
     selectedTag.value = tag.id
   }
 }
 
-// 刷新标签数据
 async function refreshTags() {
   try {
     const tagList = await GetTagsWithCount()
@@ -297,7 +263,8 @@ onUnmounted(() => {
 
 <template>
   <div class="app-shell" :class="`theme-${config.theme}`">
-    <div class="global-background"></div>
+    <div class="global-bg"></div>
+    <div class="bg-grain"></div>
 
     <Sidebar
         v-model="sidebarCollapsed"
@@ -366,10 +333,9 @@ onUnmounted(() => {
 
 <style>
 :root {
-  --transition-speed: 0.3s;
-  /* 默认深色主题 */
+  --transition-speed: 0.35s;
   --bg-app: #050505;
-  --glass-bg: rgba(15, 15, 15, 0.7);
+  --glass-bg: rgba(15, 15, 15, 0.75);
   --glass-border: rgba(255, 255, 255, 0.08);
   --text-primary: #ffffff;
   --text-secondary: #94a3b8;
@@ -378,10 +344,9 @@ onUnmounted(() => {
   --bg-gradient: #0d1425;
 }
 
-/* 各主题CSS变量 */
 [data-theme="nebula"] {
   --bg-app: #050505;
-  --glass-bg: rgba(15, 15, 15, 0.7);
+  --glass-bg: rgba(15, 15, 15, 0.75);
   --glass-border: rgba(255, 255, 255, 0.08);
   --text-primary: #ffffff;
   --text-secondary: #94a3b8;
@@ -403,7 +368,7 @@ onUnmounted(() => {
 
 [data-theme="cloud"] {
   --bg-app: #f8fafc;
-  --glass-bg: rgba(255, 255, 255, 0.9);
+  --glass-bg: rgba(255, 255, 255, 0.92);
   --glass-border: rgba(99, 102, 241, 0.15);
   --text-primary: #1e293b;
   --text-secondary: #64748b;
@@ -414,7 +379,7 @@ onUnmounted(() => {
 
 [data-theme="ancient"] {
   --bg-app: #f4ecd8;
-  --glass-bg: rgba(244, 236, 216, 0.9);
+  --glass-bg: rgba(244, 236, 216, 0.92);
   --glass-border: rgba(92, 75, 55, 0.15);
   --text-primary: #5c4b37;
   --text-secondary: #8b7355;
@@ -425,7 +390,7 @@ onUnmounted(() => {
 
 [data-theme="dusk"] {
   --bg-app: #2d1f1f;
-  --glass-bg: rgba(45, 31, 31, 0.8);
+  --glass-bg: rgba(45, 31, 31, 0.82);
   --glass-border: rgba(224, 122, 95, 0.15);
   --text-primary: #f5e6d3;
   --text-secondary: #b8a89a;
@@ -436,7 +401,7 @@ onUnmounted(() => {
 
 [data-theme="cyberpunk"] {
   --bg-app: #0d0221;
-  --glass-bg: rgba(13, 2, 33, 0.85);
+  --glass-bg: rgba(13, 2, 33, 0.88);
   --glass-border: rgba(255, 0, 255, 0.2);
   --text-primary: #f0f0f0;
   --text-secondary: #a0a0a0;
@@ -445,13 +410,18 @@ onUnmounted(() => {
   --bg-gradient: #050010;
 }
 
+* {
+  box-sizing: border-box;
+}
+
 body {
   margin: 0;
-  font-family: 'Inter', sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   overflow: hidden;
   background: var(--bg-app);
   color: var(--text-primary);
-  transition: background var(--transition-speed), color var(--transition-speed);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 .app-shell {
@@ -462,19 +432,55 @@ body {
   transition: background var(--transition-speed);
 }
 
-.global-background {
+.global-bg {
   position: absolute;
   inset: 0;
-  z-index: -1;
-  background: radial-gradient(circle at 50% 50%, var(--bg-gradient) 0%, var(--bg-app) 100%);
+  z-index: -2;
+  background: radial-gradient(ellipse at 50% 30%, var(--bg-gradient) 0%, var(--bg-app) 70%);
   transition: background var(--transition-speed);
 }
 
-.app-viewport { flex: 1; position: relative; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+.bg-grain {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  opacity: 0.03;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+}
+
+.app-viewport {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
 
 .glass-panel {
   background: var(--glass-bg);
-  backdrop-filter: blur(20px) saturate(180%);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
   border: 1px solid var(--glass-border);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--glass-border);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.15);
 }
 </style>

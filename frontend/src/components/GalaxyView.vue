@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import * as d3 from 'd3'
-import { GetRelationById, CreateGalaxy, CreateNote } from '../../wailsjs/go/main/App'
+import { GetRelationById, CreateGalaxy, CreateNote, DeleteNode } from '../../wailsjs/go/main/App'
 
 const props = defineProps(['user'])
 const emit = defineEmits(['back', 'open-note'])
@@ -10,7 +10,7 @@ const canvasRef = ref(null)
 const nodes = ref([])
 const loading = ref(true)
 const showCreateMenu = ref(false)
-const createType = ref('')
+const contextMenu = ref({ show: false, x: 0, y: 0, node: null })
 
 let simulation = null
 let canvas = null
@@ -211,7 +211,21 @@ function initGraph() {
     .on('mousemove', handleMouseMove)
     .on('mouseleave', () => { hoveredNode = null; render() })
 
-  // Forces — pull toward center
+  // Direct context menu on canvas
+  canvas.node().addEventListener('contextmenu', (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const [x, y] = transform.invert([e.offsetX, e.offsetY])
+    const node = findNode(x, y)
+    if (!node || node.type === 'user') return
+    contextMenu.value = {
+      show: true,
+      x: e.clientX,
+      y: e.clientY,
+      node
+    }
+  })
+
   simulation = d3.forceSimulation(graphNodes)
     .force('link', d3.forceLink(graphLinks).id(d => d.id).distance(100).strength(0.8))
     .force('charge', d3.forceManyBody().strength(-200))
@@ -369,17 +383,12 @@ function render() {
   ctx.restore()
 }
 
-function openCreateMenu(type) {
-  createType.value = type
-  showCreateMenu.value = true
-}
 
-async function createNode() {
-  if (!createType.value) return
-  const name = createType.value === 'galaxy' ? '新星系' : '新笔记'
+async function createNode(type) {
+  const name = type === 'galaxy' ? '新星系' : '新笔记'
   const parentId = props.user.id
   try {
-    if (createType.value === 'galaxy') {
+    if (type === 'galaxy') {
       await CreateGalaxy({
         id: '', name,
         parentId,
@@ -396,10 +405,43 @@ async function createNode() {
       })
     }
     showCreateMenu.value = false
-    createType.value = ''
     await loadNodes()
   } catch (e) {
     console.error('Create node failed:', e)
+  }
+}
+
+function handleContextMenu(event) {
+  event.preventDefault()
+  const [x, y] = transform.invert([event.offsetX, event.offsetY])
+  const node = findNode(x, y)
+  if (!node || node.type === 'user') return
+  contextMenu.value = {
+    show: true,
+    x: event.offsetX,
+    y: event.offsetY,
+    node
+  }
+}
+
+function closeContextMenu() {
+  contextMenu.value.show = false
+}
+
+function handleKeydown(e) {
+  if (e.key === 'Escape') {
+    closeContextMenu()
+  }
+}
+
+async function deleteContextNode() {
+  if (!contextMenu.value.node) return
+  try {
+    await DeleteNode(contextMenu.value.node.id)
+    closeContextMenu()
+    await loadNodes()
+  } catch (e) {
+    console.error('Delete node failed:', e)
   }
 }
 
@@ -429,6 +471,8 @@ onMounted(() => {
     loadAvatar()
     loadNodes()
     window.addEventListener('resize', handleResize)
+    window.addEventListener('click', closeContextMenu)
+    window.addEventListener('keydown', handleKeydown)
     themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
   })
 })
@@ -436,6 +480,8 @@ onMounted(() => {
 onUnmounted(() => {
   if (simulation) simulation.stop()
   window.removeEventListener('resize', handleResize)
+  window.removeEventListener('click', closeContextMenu)
+  window.removeEventListener('keydown', handleKeydown)
   themeObserver.disconnect()
 })
 </script>
@@ -456,48 +502,66 @@ onUnmounted(() => {
     </header>
 
     <div class="galaxy-canvas" ref="canvasRef">
-      <div v-if="loading" class="loading-overlay">
-        <div class="loading-spinner"></div>
-        <span>正在加载星系...</span>
-      </div>
-      <div v-else-if="nodes.length === 0" class="empty-state">
-        <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
-          <circle cx="24" cy="24" r="20" stroke="rgba(255,255,255,0.15)" stroke-width="1.5"/>
-          <path d="M24 12l6 3.5v7L24 26l-6-3.5v-7L24 12z" fill="rgba(99,102,241,0.1)" stroke="rgba(99,102,241,0.4)" stroke-width="1"/>
-        </svg>
-        <p>星系还是空的</p>
-        <span>点击右下角 + 创建第一个节点</span>
-      </div>
+      <!-- Loading and empty states are rendered by the canvas itself -->
     </div>
+    <div v-if="loading" class="loading-overlay">
+      <div class="loading-spinner"></div>
+      <span>正在加载星系...</span>
+    </div>
+    <div v-else-if="nodes.length === 0" class="empty-state">
+      <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+        <circle cx="24" cy="24" r="20" stroke="rgba(255,255,255,0.15)" stroke-width="1.5"/>
+        <path d="M24 12l6 3.5v7L24 26l-6-3.5v-7L24 12z" fill="rgba(99,102,241,0.1)" stroke="rgba(99,102,241,0.4)" stroke-width="1"/>
+      </svg>
+      <p>星系还是空的</p>
+      <span>点击右下角 + 创建第一个节点</span>
+    </div>
+
+    <!-- Context menu - positioned in galaxy-container for correct coordinates -->
+    <Transition name="fade">
+      <div
+        v-if="contextMenu.show"
+        class="context-menu"
+        :style="{ left: contextMenu.x + 'px', top: contextMenu.y + 'px' }"
+      >
+        <div class="context-item danger" @click.stop="deleteContextNode">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <path d="M2 3.5h10M5 3.5V2.5a.5.5 0 01.5-.5h3a.5.5 0 01.5.5v1M11 3.5v8a.5.5 0 01-.5.5H3.5a.5.5 0 01-.5-.5v-8" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+          </svg>
+          <span>删除节点</span>
+        </div>
+      </div>
+    </Transition>
 
     <footer class="create-area">
       <Transition name="fade">
-        <div v-if="showCreateMenu" class="create-menu">
-          <div class="create-option" @click="openCreateMenu('galaxy')">
+        <div v-if="showCreateMenu" class="create-menu" @click.stop>
+          <div class="create-option" @click="createNode('galaxy')">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
               <circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.2"/>
               <circle cx="8" cy="8" r="2" fill="currentColor"/>
             </svg>
-            <span>新建星系</span>
+            <span>创建星系</span>
           </div>
-          <div class="create-option" @click="openCreateMenu('note')">
+          <div class="create-option" @click="createNode('note')">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
               <rect x="3" y="2" width="10" height="12" rx="1" stroke="currentColor" stroke-width="1.2"/>
               <line x1="5" y1="6" x2="11" y2="6" stroke="currentColor" stroke-width="1"/>
               <line x1="5" y1="9" x2="11" y2="9" stroke="currentColor" stroke-width="1"/>
             </svg>
-            <span>新建笔记</span>
-          </div>
-          <div v-if="createType" class="create-confirm">
-            <span class="confirm-hint">创建{{ createType === 'galaxy' ? '星系' : '笔记' }}？</span>
-            <button class="confirm-btn" @click="createNode">确认</button>
+            <span>创建笔记</span>
           </div>
         </div>
       </Transition>
-      <button v-if="!showCreateMenu" class="add-btn" @click="showCreateMenu = true">
-        <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+
+      <button class="add-btn" @click="showCreateMenu = !showCreateMenu; closeContextMenu()">
+        <svg v-if="!showCreateMenu" width="20" height="20" viewBox="0 0 20 20" fill="none">
           <line x1="10" y1="4" x2="10" y2="16" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
           <line x1="4" y1="10" x2="16" y2="10" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+        <svg v-else width="18" height="18" viewBox="0 0 18 18" fill="none">
+          <line x1="14" y1="4" x2="4" y2="14" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+          <line x1="4" y1="4" x2="14" y2="14" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
         </svg>
       </button>
     </footer>
@@ -659,27 +723,36 @@ onUnmounted(() => {
 .create-option:hover { background: var(--glass-border); }
 .create-option svg { color: var(--accent); }
 
-.create-confirm {
+/* Context Menu */
+.context-menu {
+  position: fixed;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: 6px;
+  padding: 4px;
+  backdrop-filter: blur(20px);
+  transform: translate(-50%, -100%);
+  margin-top: -8px;
+}
+
+.context-item {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 12px;
-  margin-top: 4px;
-  border-top: 1px solid var(--glass-border);
-}
-.confirm-hint { font-size: 12px; color: var(--text-secondary); flex: 1; }
-.confirm-btn {
-  padding: 5px 12px;
+  gap: 8px;
+  padding: 6px 10px;
   border-radius: 4px;
-  background: var(--accent);
-  border: none;
-  color: var(--bg-app);
-  font-size: 11px;
-  font-weight: 600;
   cursor: pointer;
-  transition: opacity 0.2s;
+  transition: background 0.15s;
+  font-size: 12px;
+  color: var(--text-primary);
+  white-space: nowrap;
 }
-.confirm-btn:hover { opacity: 0.85; }
+.context-item:hover { background: rgba(255, 255, 255, 0.08); }
+.context-item.danger:hover {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+}
+.context-item.danger svg { color: #ef4444; }
 
 /* Transitions */
 .fade-enter-active, .fade-leave-active {

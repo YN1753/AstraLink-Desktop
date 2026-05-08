@@ -63,18 +63,21 @@ const showProfileModal = ref(false)
 <template>
   <div class="settings-overlay" @click.self="$emit('close')">
     <div class="settings-card">
-      <!-- 左侧导航 -->
+      <!-- Left nav -->
       <aside class="settings-sidebar">
         <div class="sidebar-header">
-          <svg class="logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-            <path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z"/>
-            <path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/>
-          </svg>
+          <div class="logo-mark">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+              <path d="M12 2L2 7l10 5 10-5-10-5z" fill="var(--accent)" opacity="0.8"/>
+              <path d="M2 17l10 5 10-5" stroke="var(--accent)" stroke-width="2" stroke-linecap="round"/>
+              <path d="M2 12l10 5 10-5" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
+            </svg>
+          </div>
           <span class="logo-text">设置</span>
         </div>
 
         <nav class="tab-nav">
-          <div
+          <button
             v-for="tab in tabs"
             :key="tab.id"
             :class="['tab-btn', { active: activeTab === tab.id }]"
@@ -94,47 +97,50 @@ const showProfileModal = ref(false)
               <circle cx="12" cy="12" r="9"/>
               <path d="M12 16v-4M12 8h.01"/>
             </svg>
-            <svg v-else-if="tab.icon === 'data'" class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>
-            </svg>
             <span class="tab-name">{{ tab.name }}</span>
-            <svg v-if="activeTab === tab.id" class="tab-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <svg v-if="activeTab === tab.id" class="tab-indicator" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M9 18l6-6-6-6"/>
             </svg>
-          </div>
+          </button>
         </nav>
 
         <div class="sidebar-footer">
-          <div class="version-badge">v1.0 Stardust</div>
+          <div class="version-tag">v1.0 Stardust</div>
         </div>
       </aside>
 
-      <!-- 内容区 -->
+      <!-- Content -->
       <main class="settings-content" ref="contentRef">
-        <!-- 个人资料 -->
+        <!-- Profile -->
         <div v-show="activeTab === 'profile'" class="page">
-          <h2 class="page-title">个人资料</h2>
-          <p class="page-desc">管理你的个人信息和头像</p>
+          <div class="page-header">
+            <h2 class="page-title">个人资料</h2>
+            <p class="page-desc">管理你的个人信息和头像</p>
+          </div>
 
           <div class="profile-card">
-            <div class="avatar-preview" @click="showAvatarPicker = true">
-              <img v-if="editedUser.avatar" :src="editedUser.avatar" class="avatar-img" />
-              <div v-else class="avatar-placeholder">{{ editedUser.username?.[0] || 'U' }}</div>
-              <div class="avatar-overlay">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                  <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
-                </svg>
+            <button class="avatar-section" @click="showAvatarPicker = true">
+              <div class="avatar-wrapper">
+                <img v-if="editedUser.avatar" :src="editedUser.avatar" class="avatar-img" />
+                <div v-else class="avatar-placeholder">
+                  <span>{{ editedUser.username?.[0] || 'U' }}</span>
+                </div>
+                <div class="avatar-overlay">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
+                  </svg>
+                </div>
               </div>
-            </div>
-            <div class="profile-info">
+            </button>
+            <div class="profile-details">
               <div class="profile-name-row">
-                <span class="profile-name">{{ editedUser.username || '未设置用户名' }}</span>
-                <button class="btn-edit-profile" @click="showProfileModal = true">
+                <h3 class="profile-name">{{ editedUser.username || '未设置用户名' }}</h3>
+                <button class="edit-btn" @click="showProfileModal = true">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                     <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
                     <path d="M18.5 2.5a2.12 2.12 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
                   </svg>
-                  修改资料
+                  编辑资料
                 </button>
               </div>
               <p class="profile-motto">{{ editedUser.motto || '暂无个性签名' }}</p>
@@ -142,24 +148,26 @@ const showProfileModal = ref(false)
           </div>
         </div>
 
-        <!-- 外观定制 -->
+        <!-- Appearance -->
         <div v-show="activeTab === 'appearance'" class="page">
-          <h2 class="page-title">外观定制</h2>
-          <p class="page-desc">自定义应用的外观和系统字体</p>
+          <div class="page-header">
+            <h2 class="page-title">外观定制</h2>
+            <p class="page-desc">自定义应用的外观和字体</p>
+          </div>
 
-          <div class="section-block">
+          <div class="settings-section">
             <label class="section-label">视觉主题</label>
             <div class="theme-grid">
-              <div
+              <button
                 v-for="t in themes"
                 :key="t.id"
-                :class="['theme-item', { active: config.theme === t.id }]"
+                :class="['theme-card', { active: config.theme === t.id }]"
                 @click="selectTheme(t.id)"
               >
                 <div class="theme-preview" :style="{ background: t.bg }">
-                  <div class="theme-preview-inner" :style="{ borderColor: t.accent }">
-                    <div class="theme-accent" :style="{ background: t.accent }"></div>
-                    <div class="theme-text" :style="{ background: t.text }"></div>
+                  <div class="theme-inner" :style="{ borderColor: t.accent }">
+                    <div class="theme-accent-dot" :style="{ background: t.accent }"></div>
+                    <div class="theme-text-bar" :style="{ background: t.text }"></div>
                   </div>
                 </div>
                 <span class="theme-name">{{ t.name }}</span>
@@ -168,30 +176,32 @@ const showProfileModal = ref(false)
                     <path d="M20 6L9 17l-5-5"/>
                   </svg>
                 </div>
-              </div>
+              </button>
             </div>
           </div>
 
-          <div class="section-block">
+          <div class="settings-section">
             <label class="section-label">系统字体</label>
             <div class="font-grid">
-              <div
+              <button
                 v-for="f in fonts"
                 :key="f"
-                :class="['font-item', { active: config.font === f }]"
+                :class="['font-card', { active: config.font === f }]"
                 @click="selectFont(f)"
               >
                 <span class="font-preview" :style="{ fontFamily: f }">Aa</span>
                 <span class="font-name">{{ f }}</span>
-              </div>
+              </button>
             </div>
           </div>
         </div>
 
-        <!-- 关于 -->
+        <!-- About -->
         <div v-show="activeTab === 'about'" class="page">
-          <h2 class="page-title">关于项目</h2>
-          <p class="page-desc">了解 AstraLink 的更多信息</p>
+          <div class="page-header">
+            <h2 class="page-title">关于项目</h2>
+            <p class="page-desc">了解 AstraLink 的更多信息</p>
+          </div>
 
           <div class="about-hero">
             <div class="about-logo">
@@ -212,7 +222,7 @@ const showProfileModal = ref(false)
           </div>
 
           <div class="feature-list">
-            <div class="feature-item">
+            <div class="feature-card">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                 <circle cx="12" cy="12" r="9"/>
                 <circle cx="12" cy="12" r="3"/>
@@ -220,21 +230,21 @@ const showProfileModal = ref(false)
               </svg>
               <span>Galaxy 星系视图</span>
             </div>
-            <div class="feature-item">
+            <div class="feature-card">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                 <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/>
                 <path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/>
               </svg>
               <span>双向链接</span>
             </div>
-            <div class="feature-item">
+            <div class="feature-card">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                 <circle cx="11" cy="11" r="7"/>
                 <path d="M21 21l-4.35-4.35"/>
               </svg>
               <span>全文搜索</span>
             </div>
-            <div class="feature-item">
+            <div class="feature-card">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                 <circle cx="12" cy="12" r="9"/>
                 <circle cx="8" cy="10" r="1.5" fill="currentColor"/>
@@ -253,22 +263,22 @@ const showProfileModal = ref(false)
         </svg>
       </button>
 
-      <!-- 头像预览弹窗 -->
-      <Transition name="fade">
-        <div v-if="showAvatarPicker" class="avatar-picker-overlay" @click.self="showAvatarPicker = false">
+      <!-- Avatar picker -->
+      <Transition name="modal-fade">
+        <div v-if="showAvatarPicker" class="modal-overlay" @click.self="showAvatarPicker = false">
           <div class="avatar-picker-modal">
-            <div class="avatar-picker-preview">
+            <div class="picker-preview">
               <img v-if="editedUser.avatar" :src="editedUser.avatar" class="preview-img" />
               <div v-else class="preview-placeholder">{{ editedUser.username?.[0] || 'U' }}</div>
             </div>
-            <div class="avatar-picker-actions">
-              <button class="btn-change-avatar" @click="triggerAvatarUpload">
+            <div class="picker-actions">
+              <button class="picker-btn primary" @click="triggerAvatarUpload">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                   <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
                 </svg>
                 更换头像
               </button>
-              <button class="btn-cancel-picker" @click="showAvatarPicker = false">取消</button>
+              <button class="picker-btn" @click="showAvatarPicker = false">取消</button>
             </div>
             <input
               id="avatar-input"
@@ -281,9 +291,9 @@ const showProfileModal = ref(false)
         </div>
       </Transition>
 
-      <!-- 编辑个人资料弹窗 -->
-      <Transition name="fade">
-        <div v-if="showProfileModal" class="profile-modal-overlay" @click.self="showProfileModal = false">
+      <!-- Profile edit modal -->
+      <Transition name="modal-fade">
+        <div v-if="showProfileModal" class="modal-overlay" @click.self="showProfileModal = false">
           <div class="profile-modal">
             <div class="modal-header">
               <h3>编辑个人资料</h3>
@@ -304,8 +314,8 @@ const showProfileModal = ref(false)
               </div>
             </div>
             <div class="modal-footer">
-              <button class="btn-cancel-modal" @click="showProfileModal = false">取消</button>
-              <button class="btn-save-modal" @click="saveUser(); showProfileModal = false">保存</button>
+              <button class="modal-btn cancel" @click="showProfileModal = false">取消</button>
+              <button class="modal-btn save" @click="saveUser(); showProfileModal = false">保存</button>
             </div>
           </div>
         </div>
@@ -318,40 +328,34 @@ const showProfileModal = ref(false)
 .settings-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.7);
-  backdrop-filter: blur(12px);
+  background: rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(16px);
   display: flex;
   justify-content: center;
   align-items: center;
   z-index: 200;
-  animation: fadeIn 0.2s ease;
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
 }
 
 .settings-card {
-  width: min(720px, 92vw);
-  height: min(540px, 85vh);
+  width: min(760px, 94vw);
+  height: min(560px, 88vh);
   display: flex;
   position: relative;
-  border-radius: clamp(12px, 2vw, 20px);
+  border-radius: 20px;
   overflow: hidden;
-  box-shadow: 0 25px 80px rgba(0, 0, 0, 0.5), 0 0 0 1px var(--glass-border);
-  animation: slideUp 0.3s ease;
+  box-shadow: 0 50px 120px rgba(0, 0, 0, 0.5), 0 0 0 1px var(--glass-border);
+  animation: slideUp 0.35s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 @keyframes slideUp {
-  from { opacity: 0; transform: translateY(20px); }
+  from { opacity: 0; transform: translateY(24px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* 左侧导航 */
+/* Sidebar */
 .settings-sidebar {
-  width: min(200px, 25%);
-  background: linear-gradient(180deg, var(--glass-bg) 0%, rgba(0, 0, 0, 0.15) 100%);
+  width: min(200px, 24%);
+  background: linear-gradient(180deg, rgba(0,0,0,0.3) 0%, rgba(0,0,0,0.15) 100%);
   border-right: 1px solid var(--glass-border);
   display: flex;
   flex-direction: column;
@@ -363,17 +367,21 @@ const showProfileModal = ref(false)
   align-items: center;
   gap: 10px;
   padding: 0 20px;
-  margin-bottom: 30px;
+  margin-bottom: 32px;
 }
 
-.logo-icon {
-  width: 24px;
-  height: 24px;
-  color: var(--accent);
+.logo-mark {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(var(--accent-rgb), 0.1);
+  border-radius: 10px;
 }
 
 .logo-text {
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 600;
   color: var(--text-primary);
   letter-spacing: 1px;
@@ -390,14 +398,18 @@ const showProfileModal = ref(false)
 .tab-btn {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   padding: 12px 14px;
-  border-radius: 10px;
+  border-radius: 12px;
   cursor: pointer;
   transition: all 0.2s ease;
   color: var(--text-secondary);
   font-size: 13px;
-  position: relative;
+  border: none;
+  background: transparent;
+  font-family: inherit;
+  text-align: left;
+  width: 100%;
 }
 
 .tab-btn:hover {
@@ -408,7 +420,6 @@ const showProfileModal = ref(false)
 .tab-btn.active {
   background: linear-gradient(90deg, rgba(var(--accent-rgb), 0.12) 0%, transparent 70%);
   color: var(--accent);
-  font-weight: 500;
 }
 
 .tab-icon {
@@ -421,7 +432,7 @@ const showProfileModal = ref(false)
   flex: 1;
 }
 
-.tab-arrow {
+.tab-indicator {
   width: 14px;
   height: 14px;
   opacity: 0.5;
@@ -431,19 +442,18 @@ const showProfileModal = ref(false)
   padding: 0 20px;
 }
 
-.version-badge {
+.version-tag {
   font-size: 10px;
   color: var(--text-secondary);
-  opacity: 0.5;
+  opacity: 0.4;
   letter-spacing: 0.5px;
 }
 
-/* 内容区 */
+/* Content */
 .settings-content {
   flex: 1;
   overflow-y: auto;
   background: var(--glass-bg);
-  color: var(--text-primary);
 }
 
 .settings-content::-webkit-scrollbar {
@@ -460,69 +470,88 @@ const showProfileModal = ref(false)
 }
 
 .page {
-  padding: clamp(16px, 3vw, 32px) clamp(20px, 4vw, 36px);
+  padding: clamp(20px, 4vw, 36px) clamp(24px, 5vw, 40px);
+}
+
+.page-header {
+  margin-bottom: 28px;
 }
 
 .page-title {
-  font-size: clamp(16px, 2.5vw, 22px);
-  font-weight: 600;
-  margin: 0 0 6px 0;
+  font-size: clamp(20px, 3vw, 26px);
+  font-weight: 700;
+  margin: 0 0 8px 0;
   color: var(--text-primary);
 }
 
 .page-desc {
-  font-size: clamp(11px, 1.5vw, 13px);
+  font-size: clamp(12px, 1.5vw, 14px);
   color: var(--text-secondary);
-  margin: 0 0 clamp(16px, 3vw, 28px) 0;
+  margin: 0;
 }
 
-/* 个人资料卡片 */
+/* Profile card */
 .profile-card {
   display: flex;
   align-items: center;
-  gap: 20px;
-  padding: 24px;
+  gap: 24px;
+  padding: 28px;
   background: rgba(255, 255, 255, 0.02);
-  border-radius: 16px;
   border: 1px solid var(--glass-border);
+  border-radius: 20px;
 }
 
-.avatar-preview {
-  width: clamp(64px, 10vw, 80px);
-  height: clamp(64px, 10vw, 80px);
-  border-radius: 50%;
-  overflow: hidden;
-  flex-shrink: 0;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+.avatar-section {
+  background: none;
+  border: none;
   cursor: pointer;
-  position: relative;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  padding: 0;
 }
 
-.avatar-preview:hover {
-  transform: scale(1.05);
-  box-shadow: 0 8px 25px rgba(var(--accent-rgb), 0.3);
+.avatar-wrapper {
+  position: relative;
+  width: clamp(72px, 12vw, 96px);
+  height: clamp(72px, 12vw, 96px);
 }
 
 .avatar-img {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  border-radius: 50%;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+
+.avatar-placeholder {
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(135deg, var(--accent) 0%, rgba(var(--accent-rgb), 0.7) 100%);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8px 24px rgba(var(--accent-rgb), 0.3);
+}
+
+.avatar-placeholder span {
+  font-size: clamp(28px, 5vw, 36px);
+  font-weight: 700;
+  color: #fff;
 }
 
 .avatar-overlay {
   position: absolute;
   inset: 0;
   background: rgba(0, 0, 0, 0.5);
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   opacity: 0;
   transition: opacity 0.2s ease;
-  border-radius: 50%;
 }
 
-.avatar-preview:hover .avatar-overlay {
+.avatar-section:hover .avatar-overlay {
   opacity: 1;
 }
 
@@ -532,19 +561,7 @@ const showProfileModal = ref(false)
   color: #fff;
 }
 
-.avatar-placeholder {
-  width: 100%;
-  height: 100%;
-  background: linear-gradient(135deg, var(--accent) 0%, rgba(var(--accent-rgb), 0.7) 100%);
-  color: #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: clamp(24px, 4vw, 32px);
-  font-weight: 700;
-}
-
-.profile-info {
+.profile-details {
   flex: 1;
   min-width: 0;
 }
@@ -552,61 +569,452 @@ const showProfileModal = ref(false)
 .profile-name-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  gap: 16px;
   margin-bottom: 8px;
 }
 
 .profile-name {
-  font-size: clamp(16px, 2.5vw, 20px);
-  font-weight: 600;
+  font-size: clamp(18px, 3vw, 22px);
+  font-weight: 700;
   color: var(--text-primary);
+  margin: 0;
 }
 
-.btn-edit-profile {
+.edit-btn {
   display: flex;
   align-items: center;
   gap: 6px;
+  padding: 8px 14px;
   background: rgba(var(--accent-rgb), 0.1);
   border: 1px solid var(--accent);
   color: var(--accent);
-  padding: 8px 14px;
-  border-radius: 8px;
+  border-radius: 10px;
   cursor: pointer;
   font-size: 12px;
   font-weight: 500;
   transition: all 0.2s ease;
-  flex-shrink: 0;
+  font-family: inherit;
 }
 
-.btn-edit-profile svg {
+.edit-btn svg {
   width: 14px;
   height: 14px;
 }
 
-.btn-edit-profile:hover {
+.edit-btn:hover {
   background: rgba(var(--accent-rgb), 0.2);
 }
 
 .profile-motto {
-  font-size: clamp(12px, 1.5vw, 14px);
+  font-size: clamp(13px, 1.8vw, 15px);
   color: var(--text-secondary);
   margin: 0;
   line-height: 1.5;
 }
 
-.hint {
-  font-size: 11px;
-  color: var(--text-secondary);
-  opacity: 0.6;
+/* Settings section */
+.settings-section {
+  margin-bottom: 32px;
 }
 
-/* 表单卡片 */
-.form-card {
-  background: rgba(255, 255, 255, 0.02);
-  border-radius: 14px;
+.section-label {
+  display: block;
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 16px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+.theme-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.theme-card {
+  position: relative;
+  background: rgba(255, 255, 255, 0.03);
   border: 1px solid var(--glass-border);
-  padding: 20px;
+  padding: 14px;
+  border-radius: 14px;
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.2s ease;
+  font-family: inherit;
+  color: inherit;
+}
+
+.theme-card:hover {
+  border-color: rgba(var(--accent-rgb), 0.4);
+  transform: translateY(-2px);
+}
+
+.theme-card.active {
+  border-color: var(--accent);
+  background: rgba(var(--accent-rgb), 0.08);
+}
+
+.theme-preview {
+  height: 48px;
+  border-radius: 8px;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+}
+
+.theme-inner {
+  width: 100%;
+  height: 100%;
+  border-radius: 5px;
+  border: 1.5px solid;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.theme-accent-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+}
+
+.theme-text-bar {
+  width: 20px;
+  height: 5px;
+  border-radius: 3px;
+  opacity: 0.8;
+}
+
+.theme-name {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.theme-check {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 20px;
+  height: 20px;
+  background: var(--accent);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.theme-check svg {
+  width: 11px;
+  height: 11px;
+  color: #fff;
+}
+
+.font-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+.font-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: inherit;
+  color: inherit;
+}
+
+.font-card:hover {
+  border-color: rgba(var(--accent-rgb), 0.4);
+  background: rgba(var(--accent-rgb), 0.05);
+}
+
+.font-card.active {
+  border-color: var(--accent);
+  background: rgba(var(--accent-rgb), 0.1);
+}
+
+.font-preview {
+  font-size: 24px;
+  color: var(--text-primary);
+  width: 40px;
+  text-align: center;
+}
+
+.font-name {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+/* About */
+.about-hero {
+  text-align: center;
+  padding: 32px 0;
+  margin-bottom: 24px;
+}
+
+.about-logo {
+  width: 80px;
+  height: 80px;
+  margin: 0 auto 18px;
+}
+
+.about-logo svg {
+  width: 100%;
+  height: 100%;
+}
+
+.about-title {
+  font-size: 28px;
+  font-weight: 800;
+  margin: 0 0 8px 0;
+  background: linear-gradient(135deg, var(--text-primary) 0%, var(--accent) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.about-subtitle {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.about-desc {
+  font-size: 14px;
+  line-height: 1.8;
+  color: var(--text-secondary);
+  text-align: center;
+  margin-bottom: 28px;
+}
+
+.about-desc p {
+  margin: 0 0 10px 0;
+}
+
+.feature-list {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+.feature-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  font-size: 13px;
+  color: var(--text-primary);
+  transition: all 0.2s ease;
+}
+
+.feature-card:hover {
+  border-color: rgba(var(--accent-rgb), 0.3);
+  background: rgba(var(--accent-rgb), 0.03);
+}
+
+.feature-card svg {
+  width: 20px;
+  height: 20px;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+/* Close button */
+.close-btn {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 36px;
+  height: 36px;
+  border: none;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: 10px;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.close-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.close-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-primary);
+}
+
+/* Modal */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(8px);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 300;
+}
+
+.avatar-picker-modal {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: 24px;
+  padding: 36px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+  animation: scaleIn 0.25s ease;
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.9); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.picker-preview {
+  width: 140px;
+  height: 140px;
+  border-radius: 50%;
+  overflow: hidden;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
+}
+
+.preview-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.preview-placeholder {
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(135deg, var(--accent) 0%, rgba(var(--accent-rgb), 0.7) 100%);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 52px;
+  font-weight: 700;
+}
+
+.picker-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.picker-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 24px;
+  border-radius: 12px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  font-family: inherit;
+}
+
+.picker-btn.primary {
+  background: var(--accent);
+  border: none;
+  color: #fff;
+}
+
+.picker-btn.primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(var(--accent-rgb), 0.35);
+}
+
+.picker-btn:not(.primary) {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--glass-border);
+  color: var(--text-secondary);
+}
+
+.picker-btn:not(.primary):hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-primary);
+}
+
+.picker-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* Profile modal */
+.profile-modal {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: 20px;
+  width: min(420px, 90vw);
+  overflow: hidden;
+  animation: scaleIn 0.25s ease;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 24px;
+  border-bottom: 1px solid var(--glass-border);
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.modal-close {
+  width: 30px;
+  height: 30px;
+  border: none;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.modal-close svg {
+  width: 14px;
+  height: 14px;
+}
+
+.modal-close:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-primary);
+}
+
+.modal-body {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
 }
 
 .form-group {
@@ -616,28 +1024,19 @@ const showProfileModal = ref(false)
 }
 
 .form-label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
   font-size: 12px;
   color: var(--text-secondary);
   font-weight: 500;
-}
-
-.form-label svg {
-  width: 14px;
-  height: 14px;
-  opacity: 0.7;
 }
 
 .form-input {
   width: 100%;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid var(--glass-border);
-  border-radius: 8px;
-  padding: 12px 14px;
+  border-radius: 10px;
+  padding: 14px 16px;
   color: var(--text-primary);
-  font-size: 13px;
+  font-size: 14px;
   font-family: inherit;
   outline: none;
   transition: all 0.2s ease;
@@ -656,474 +1055,64 @@ const showProfileModal = ref(false)
 
 textarea.form-input {
   resize: vertical;
-  min-height: 80px;
-}
-
-.form-divider {
-  height: 1px;
-  background: var(--glass-border);
-  margin: 16px 0;
-}
-
-/* 主题网格 */
-.section-block {
-  margin-bottom: 24px;
-}
-
-.section-label {
-  display: block;
-  font-size: 12px;
-  color: var(--text-secondary);
-  margin-bottom: 12px;
-  font-weight: 500;
-  letter-spacing: 0.5px;
-}
-
-.theme-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
-}
-
-.theme-item {
-  position: relative;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid var(--glass-border);
-  padding: 12px;
-  border-radius: 12px;
-  cursor: pointer;
-  text-align: center;
-  transition: all 0.2s ease;
-}
-
-.theme-item:hover {
-  border-color: var(--accent);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-}
-
-.theme-item.active {
-  border-color: var(--accent);
-  background: rgba(var(--accent-rgb), 0.08);
-}
-
-.theme-preview {
-  height: 44px;
-  border-radius: 6px;
-  margin-bottom: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 6px;
-}
-
-.theme-preview-inner {
-  width: 100%;
-  height: 100%;
-  border-radius: 4px;
-  border: 1.5px solid;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-}
-
-.theme-accent {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-}
-
-.theme-text {
-  width: 16px;
-  height: 4px;
-  border-radius: 2px;
-  opacity: 0.8;
-}
-
-.theme-name {
-  font-size: 11px;
-  color: var(--text-secondary);
-  font-weight: 500;
-}
-
-.theme-check {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  width: 18px;
-  height: 18px;
-  background: var(--accent);
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.theme-check svg {
-  width: 10px;
-  height: 10px;
-  color: #fff;
-}
-
-/* 字体网格 */
-.font-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 10px;
-}
-
-.font-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 14px 16px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid var(--glass-border);
-  border-radius: 10px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.font-item:hover {
-  border-color: var(--accent);
-  background: rgba(var(--accent-rgb), 0.05);
-}
-
-.font-item.active {
-  border-color: var(--accent);
-  background: rgba(var(--accent-rgb), 0.1);
-}
-
-.font-preview {
-  font-size: 22px;
-  color: var(--text-primary);
-  width: 36px;
-  text-align: center;
-}
-
-.font-name {
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-
-/* 关于页 */
-.about-hero {
-  text-align: center;
-  padding: 30px 0;
-  margin-bottom: 20px;
-}
-
-.about-logo {
-  width: 72px;
-  height: 72px;
-  margin: 0 auto 16px;
-}
-
-.about-logo svg {
-  width: 100%;
-  height: 100%;
-}
-
-.about-title {
-  font-size: 24px;
-  font-weight: 700;
-  margin: 0 0 6px 0;
-  background: linear-gradient(135deg, var(--text-primary) 0%, var(--accent) 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-.about-subtitle {
-  font-size: 13px;
-  color: var(--text-secondary);
-  margin: 0;
-}
-
-.about-desc {
-  font-size: 13px;
-  line-height: 1.7;
-  color: var(--text-secondary);
-  text-align: center;
-  margin-bottom: 24px;
-}
-
-.about-desc p {
-  margin: 0 0 8px 0;
-}
-
-.feature-list {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 10px;
-}
-
-.feature-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 14px 16px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid var(--glass-border);
-  border-radius: 10px;
-  font-size: 13px;
-  color: var(--text-primary);
-  transition: all 0.2s ease;
-}
-
-.feature-item:hover {
-  border-color: var(--accent);
-  background: rgba(var(--accent-rgb), 0.05);
-}
-
-.feature-item svg {
-  width: 18px;
-  height: 18px;
-  color: var(--accent);
-  flex-shrink: 0;
-}
-
-/* 关闭按钮 */
-.close-btn {
-  position: absolute;
-  top: 16px;
-  right: 16px;
-  width: 32px;
-  height: 32px;
-  border: none;
-  background: rgba(255, 255, 255, 0.05);
-  color: var(--text-secondary);
-  cursor: pointer;
-  border-radius: 8px;
-  transition: all 0.2s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.close-btn svg {
-  width: 16px;
-  height: 16px;
-}
-
-.close-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: var(--text-primary);
-}
-
-/* 编辑个人资料弹窗 */
-.profile-modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.75);
-  backdrop-filter: blur(8px);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 300;
-}
-
-.profile-modal {
-  background: var(--glass-bg);
-  border: 1px solid var(--glass-border);
-  border-radius: 16px;
-  width: min(400px, 90vw);
-  overflow: hidden;
-  animation: scaleIn 0.2s ease;
-}
-
-@keyframes scaleIn {
-  from { opacity: 0; transform: scale(0.95); }
-  to { opacity: 1; transform: scale(1); }
-}
-
-.modal-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--glass-border);
-}
-
-.modal-header h3 {
-  margin: 0;
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.modal-close {
-  width: 28px;
-  height: 28px;
-  border: none;
-  background: rgba(255, 255, 255, 0.05);
-  color: var(--text-secondary);
-  cursor: pointer;
-  border-radius: 6px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s ease;
-}
-
-.modal-close svg {
-  width: 14px;
-  height: 14px;
-}
-
-.modal-close:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: var(--text-primary);
-}
-
-.modal-body {
-  padding: 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
+  min-height: 90px;
 }
 
 .modal-footer {
   display: flex;
   gap: 10px;
   justify-content: flex-end;
-  padding: 16px 20px;
+  padding: 18px 24px;
   border-top: 1px solid var(--glass-border);
 }
 
-.btn-cancel-modal {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid var(--glass-border);
-  color: var(--text-secondary);
-  padding: 10px 20px;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 13px;
-  transition: all 0.2s ease;
-}
-
-.btn-cancel-modal:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: var(--text-primary);
-}
-
-.btn-save-modal {
-  background: var(--accent);
-  border: none;
-  color: #fff;
-  padding: 10px 24px;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 500;
-  transition: all 0.2s ease;
-}
-
-.btn-save-modal:hover {
-  opacity: 0.9;
-  transform: translateY(-1px);
-}
-
-/* 头像预览弹窗 */
-.avatar-picker-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.75);
-  backdrop-filter: blur(8px);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 300;
-}
-
-.avatar-picker-modal {
-  background: var(--glass-bg);
-  border: 1px solid var(--glass-border);
-  border-radius: 20px;
-  padding: 30px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 20px;
-  animation: scaleIn 0.2s ease;
-}
-
-@keyframes scaleIn {
-  from { opacity: 0; transform: scale(0.9); }
-  to { opacity: 1; transform: scale(1); }
-}
-
-.avatar-picker-preview {
-  width: 140px;
-  height: 140px;
-  border-radius: 50%;
-  overflow: hidden;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
-}
-
-.preview-img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.preview-placeholder {
-  width: 100%;
-  height: 100%;
-  background: linear-gradient(135deg, var(--accent) 0%, rgba(var(--accent-rgb), 0.7) 100%);
-  color: #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 48px;
-  font-weight: 700;
-}
-
-.avatar-picker-actions {
-  display: flex;
-  gap: 12px;
-}
-
-.btn-change-avatar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: var(--accent);
-  border: none;
-  color: #fff;
+.modal-btn {
   padding: 12px 24px;
   border-radius: 10px;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
   transition: all 0.2s ease;
+  font-family: inherit;
 }
 
-.btn-change-avatar svg {
-  width: 16px;
-  height: 16px;
-}
-
-.btn-change-avatar:hover {
-  opacity: 0.9;
-  transform: translateY(-1px);
-}
-
-.btn-cancel-picker {
+.modal-btn.cancel {
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid var(--glass-border);
   color: var(--text-secondary);
-  padding: 12px 20px;
-  border-radius: 10px;
-  cursor: pointer;
-  font-size: 13px;
-  transition: all 0.2s ease;
 }
 
-.btn-cancel-picker:hover {
+.modal-btn.cancel:hover {
   background: rgba(255, 255, 255, 0.1);
   color: var(--text-primary);
 }
 
+.modal-btn.save {
+  background: var(--accent);
+  border: none;
+  color: #fff;
+}
+
+.modal-btn.save:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(var(--accent-rgb), 0.3);
+}
+
+/* Modal transition */
+.modal-fade-enter-active {
+  transition: all 0.25s ease;
+}
+
+.modal-fade-leave-active {
+  transition: all 0.2s ease;
+}
+
+.modal-fade-enter-from, .modal-fade-leave-to {
+  opacity: 0;
+}
+
+.modal-fade-enter-from .avatar-picker-modal,
+.modal-fade-enter-from .profile-modal {
+  transform: scale(0.92);
+}
 </style>

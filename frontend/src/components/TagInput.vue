@@ -19,29 +19,23 @@ const showDropdown = ref(false)
 const dropdownPosition = ref({ top: 0, left: 0 })
 const inputRef = ref(null)
 
-// Load all tags
 async function loadTags() {
   try {
     const tags = await GetTagsWithCount()
     allTags.value = tags || []
-  } catch (e) {
-    console.error('加载标签失败:', e)
-  }
+  } catch (e) {}
 }
 
-// Filter tags based on input
 const filteredTags = computed(() => {
   if (!inputValue.value) return allTags.value
   const search = inputValue.value.toLowerCase()
   return allTags.value.filter(t => t.name.toLowerCase().includes(search))
 })
 
-// Check if a tag is already selected
 function isSelected(tag) {
   return selectedTags.value.some(t => t.id === tag.id)
 }
 
-// Add tag to selected
 function addTag(tag) {
   if (!isSelected(tag)) {
     selectedTags.value.push(tag)
@@ -51,24 +45,18 @@ function addTag(tag) {
   showDropdown.value = false
 }
 
-// Remove tag from selected
 async function removeTag(tag) {
-  // If noteId exists and is not a new note, delete the relation
   if (props.noteId && !props.noteId.startsWith('new-')) {
     try {
       await DeleteTagRelation(tag.id, props.noteId)
-      // Refresh the tag cache
       await loadTags()
-    } catch (e) {
-      console.error('删除标签关联失败:', e)
-    }
+    } catch (e) {}
   }
   selectedTags.value = selectedTags.value.filter(t => t.id !== tag.id)
   emit('tags-changed', selectedTags.value)
   emit('tag-removed', tag)
 }
 
-// Create new tag
 async function createNewTag() {
   if (!inputValue.value.trim()) return
   try {
@@ -77,36 +65,28 @@ async function createNewTag() {
       parentId: '',
       others: {}
     })
-    // Reload tags to get the new one with correct ID
     await loadTags()
-    // Find the newly created tag
     const created = allTags.value.find(t => t.id === newTag || t.name === inputValue.value.trim())
     if (created) {
       addTag(created)
     } else {
-      // Fallback: create tag object manually
       addTag({ id: newTag, name: inputValue.value.trim(), noteCount: 0 })
     }
     emit('refresh-tags')
-  } catch (e) {
-    console.error('创建标签失败:', e)
-  }
+  } catch (e) {}
   inputValue.value = ''
   showDropdown.value = false
 }
 
-// Handle input
 function handleInput(e) {
   inputValue.value = e.target.value
   showDropdown.value = true
   updateDropdownPosition()
 }
 
-// Handle keydown
 function handleKeydown(e) {
   if (e.key === 'Enter' && inputValue.value.trim()) {
     e.preventDefault()
-    // Check if exact match exists
     const exact = filteredTags.value.find(t => t.name.toLowerCase() === inputValue.value.toLowerCase())
     if (exact) {
       addTag(exact)
@@ -119,24 +99,21 @@ function handleKeydown(e) {
   }
 }
 
-// Update dropdown position
 function updateDropdownPosition() {
   if (!inputRef.value) return
   const rect = inputRef.value.getBoundingClientRect()
   dropdownPosition.value = {
-    top: rect.bottom + 4,
+    top: rect.bottom + 6,
     left: rect.left
   }
 }
 
-// Handle click outside
 function handleClickOutside(e) {
   if (!e.target.closest('.tag-input-container')) {
     showDropdown.value = false
   }
 }
 
-// Initialize selected tags from props
 watch(() => props.noteTags, (newTags) => {
   selectedTags.value = newTags ? [...newTags] : []
 }, { immediate: true, deep: true })
@@ -153,29 +130,27 @@ onUnmounted(() => {
 
 <template>
   <div class="tag-input-container">
-    <!-- Selected tags -->
     <div class="selected-tags">
-      <span
+      <button
         v-for="tag in selectedTags"
         :key="tag.id"
         class="tag-chip selected"
         @click="removeTag(tag)"
       >
-        {{ tag.name }}
-        <svg class="remove-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <line x1="18" y1="6" x2="6" y2="18" />
-          <line x1="6" y1="6" x2="18" y2="18" />
+        <span class="chip-hash">#</span>
+        <span class="chip-name">{{ tag.name }}</span>
+        <svg class="chip-remove" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"/>
+          <line x1="6" y1="6" x2="18" y2="18"/>
         </svg>
-      </span>
+      </button>
     </div>
 
-    <!-- Input -->
-    <div class="input-wrapper">
+    <div class="input-wrapper" ref="inputRef">
       <span class="input-prefix">@</span>
       <input
-        ref="inputRef"
         type="text"
-        class="tag-input"
+        class="tag-input-field"
         placeholder="添加标签..."
         :value="inputValue"
         @input="handleInput"
@@ -184,36 +159,36 @@ onUnmounted(() => {
       />
     </div>
 
-    <!-- Dropdown -->
-    <div
-      v-if="showDropdown && (filteredTags.length > 0 || inputValue.trim())"
-      class="tag-dropdown"
-      :style="{ top: dropdownPosition.top + 'px', left: dropdownPosition.left + 'px' }"
-    >
-      <!-- Existing tags -->
+    <Transition name="dropdown-fade">
       <div
-        v-for="tag in filteredTags.filter(t => !isSelected(t)).slice(0, 8)"
-        :key="tag.id"
-        class="dropdown-item"
-        @click="addTag(tag)"
+        v-if="showDropdown && (filteredTags.length > 0 || inputValue.trim())"
+        class="tag-dropdown"
+        :style="{ top: dropdownPosition.top + 'px', left: dropdownPosition.left + 'px' }"
       >
-        <span class="tag-name">{{ tag.name }}</span>
-        <span class="tag-count">{{ tag.noteCount }}</span>
-      </div>
+        <button
+          v-for="tag in filteredTags.filter(t => !isSelected(t)).slice(0, 8)"
+          :key="tag.id"
+          class="dropdown-item"
+          @click="addTag(tag)"
+        >
+          <span class="dropdown-hash">#</span>
+          <span class="dropdown-name">{{ tag.name }}</span>
+          <span class="dropdown-count">{{ tag.noteCount }}</span>
+        </button>
 
-      <!-- Create new -->
-      <div
-        v-if="inputValue.trim() && !filteredTags.some(t => t.name.toLowerCase() === inputValue.toLowerCase())"
-        class="dropdown-item create-new"
-        @click="createNewTag"
-      >
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <line x1="12" y1="5" x2="12" y2="19" />
-          <line x1="5" y1="12" x2="19" y2="12" />
-        </svg>
-        <span>创建 "{{ inputValue.trim() }}"</span>
+        <button
+          v-if="inputValue.trim() && !filteredTags.some(t => t.name.toLowerCase() === inputValue.toLowerCase())"
+          class="dropdown-item create-new"
+          @click="createNewTag"
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="12" y1="5" x2="12" y2="19"/>
+            <line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+          <span>创建 "{{ inputValue.trim() }}"</span>
+        </button>
       </div>
-    </div>
+    </Transition>
   </div>
 </template>
 
@@ -222,9 +197,10 @@ onUnmounted(() => {
   position: relative;
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  padding: 8px 12px;
-  background: rgba(255, 255, 255, 0.02);
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: rgba(0, 0, 0, 0.2);
   border-bottom: 1px solid var(--glass-border);
 }
 
@@ -238,94 +214,108 @@ onUnmounted(() => {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 3px 8px;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid var(--glass-border);
-  color: var(--text-secondary);
-  font-size: 11px;
+  padding: 5px 8px 5px 10px;
+  background: rgba(var(--accent-rgb), 0.15);
+  border: 1px solid rgba(var(--accent-rgb), 0.3);
+  border-radius: 14px;
   cursor: pointer;
   transition: all 0.2s;
+  font-family: inherit;
+  color: inherit;
 }
 
 .tag-chip:hover {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: var(--accent);
+  background: rgba(var(--accent-rgb), 0.25);
 }
 
-.tag-chip.selected {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--bg-app);
-}
-
-.remove-icon {
-  opacity: 0.6;
-}
-
-.tag-chip:hover .remove-icon {
+.tag-chip:hover .chip-remove {
   opacity: 1;
+}
+
+.chip-hash {
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 11px;
+}
+
+.chip-name {
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.chip-remove {
+  color: var(--text-secondary);
+  opacity: 0.5;
+  transition: opacity 0.15s;
 }
 
 .input-wrapper {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid var(--glass-border);
-  border-radius: 12px;
-  padding: 2px 8px;
-  transition: border-color 0.2s;
+  border-radius: 16px;
+  padding: 6px 12px;
+  transition: all 0.2s;
+  min-width: 100px;
 }
 
 .input-wrapper:focus-within {
   border-color: var(--accent);
+  background: rgba(var(--accent-rgb), 0.05);
 }
 
 .input-prefix {
   color: var(--accent);
   font-weight: 600;
-  font-size: 12px;
+  font-size: 13px;
 }
 
-.tag-input {
+.tag-input-field {
   background: transparent;
   border: none;
   outline: none;
   color: var(--text-primary);
   font-size: 12px;
-  width: 100px;
+  width: 80px;
 }
 
-.tag-input::placeholder {
+.tag-input-field::placeholder {
   color: var(--text-secondary);
-  opacity: 0.5;
+  opacity: 0.4;
 }
 
 .tag-dropdown {
   position: fixed;
   min-width: 180px;
-  max-height: 240px;
+  max-height: 220px;
   overflow-y: auto;
   background: var(--glass-bg);
   backdrop-filter: blur(20px);
   border: 1px solid var(--glass-border);
-  border-radius: 8px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  border-radius: 12px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
   z-index: 1000;
-  padding: 4px;
+  padding: 6px;
 }
 
 .dropdown-item {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 8px 12px;
-  border-radius: 6px;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 8px;
   cursor: pointer;
   font-size: 12px;
   color: var(--text-secondary);
-  transition: background 0.15s;
+  transition: all 0.15s;
+  border: none;
+  background: transparent;
+  font-family: inherit;
+  text-align: left;
+  width: 100%;
 }
 
 .dropdown-item:hover {
@@ -333,26 +323,47 @@ onUnmounted(() => {
   color: var(--text-primary);
 }
 
+.dropdown-hash {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.dropdown-name {
+  flex: 1;
+  color: var(--text-primary);
+}
+
+.dropdown-count {
+  font-size: 10px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-secondary);
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+
 .dropdown-item.create-new {
   border-top: 1px solid var(--glass-border);
   margin-top: 4px;
-  padding-top: 8px;
+  padding-top: 10px;
   color: var(--accent);
 }
 
 .dropdown-item.create-new:hover {
-  background: rgba(59, 130, 246, 0.1);
+  background: rgba(var(--accent-rgb), 0.1);
 }
 
-.tag-name {
-  flex: 1;
+.dropdown-item.create-new svg {
+  flex-shrink: 0;
 }
 
-.tag-count {
-  font-size: 10px;
-  opacity: 0.5;
-  background: rgba(255, 255, 255, 0.06);
-  padding: 1px 6px;
-  border-radius: 8px;
+.dropdown-fade-enter-active,
+.dropdown-fade-leave-active {
+  transition: all 0.2s ease;
+}
+
+.dropdown-fade-enter-from,
+.dropdown-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
 }
 </style>
