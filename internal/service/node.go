@@ -164,15 +164,14 @@ func (n *NodeService) CreateNote(req model.CreateNoteReq) (string, error) { //�
 		Type:   "note",
 		Others: req.Others,
 	}
-	//保存笔记
-	if req.File != "" {
-		file := strings.NewReader(req.File)
-		address, err := n.base.SaveLocalFile("notes", file, node.ID+".md")
-		if err != nil {
-			return node.ID, err
-		}
-		node.Address = address
+
+	file := strings.NewReader(req.File)
+	address, err := n.base.SaveLocalFile("notes", file, node.ID+".md")
+	if err != nil {
+		return node.ID, err
 	}
+	node.Address = address
+
 	//更新逻辑路径
 	parentPath := strings.TrimSuffix(strings.TrimSpace(req.ParentPath), "/")
 	if parentPath == "" {

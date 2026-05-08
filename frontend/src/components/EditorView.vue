@@ -31,9 +31,13 @@ async function openNote(note = null, forceReload = false) {
   }
 
   let content = ''
+  let title = note.name || ''
   if (note.id && !note.id.startsWith('new-')) {
     try {
       content = await GetNoteContent(note.id)
+      if (!title && content) {
+        title = extractTitle(content)
+      }
     } catch (e) {}
   }
 
@@ -41,7 +45,7 @@ async function openNote(note = null, forceReload = false) {
     existing.content = content || note.content || ''
     currentTabId.value = note.id
   } else {
-    openTabs.value.push({ id: note.id, name: note.name, content: content || note.content || '', isNew: false })
+    openTabs.value.push({ id: note.id, name: title, content: content || note.content || '', isNew: false })
     currentTabId.value = note.id
   }
 
