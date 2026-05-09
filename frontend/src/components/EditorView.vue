@@ -4,7 +4,7 @@ import { MilkdownProvider } from '@milkdown/vue'
 import MilkdownCore from './MilkdownCore.vue'
 import TagInput from './TagInput.vue'
 import LinkPickerView from './LinkPickerView.vue'
-import { GetNoteContent, CreateNote, UpdateNoteContent, UpdateNodeInfo, LinkTagToNode, GetTagsWithCount, GetTagsByNodeID } from '../../wailsjs/go/main/App'
+import { GetNoteContent, CreateNote, UpdateNoteContent, UpdateNodeInfo, LinkTagToNode, GetTagsWithCount, GetTagsByNodeID, GetNodeByPath } from '../../wailsjs/go/main/App'
 
 const props = defineProps(['status', 'noteId', 'user', 'newNoteRequest'])
 const emit = defineEmits(['saved', 'back', 'refresh-tags', 'open-note'])
@@ -75,6 +75,8 @@ onMounted(async () => {
   } else {
     openNote()
   }
+  // Preload file tree in background
+  loadFileTree()
 })
 
 watch(() => props.noteId, async (newId) => {
@@ -248,6 +250,108 @@ async function linkTagsToNote(noteId, tags) {
     }
   } catch (e) {}
 }
+
+// Sidebar mode: 'outline' or 'tree'
+const sidebarMode = ref('outline')
+const fileTree = ref([])
+const expandedPaths = ref(new Set())
+
+async function loadFileTree() {
+  try {
+    // GetNodeByPath('root') returns ALL nodes (everything starts with 'root')
+    const allNodes = await GetNodeByPath('root')
+    const nodes = (allNodes || []).filter(n => n.type === 'galaxy' || n.type === 'note')
+    fileTree.value = buildFileTree(nodes)
+  } catch (e) {
+    console.error('Failed to load file tree:', e)
+    fileTree.value = []
+  }
+}
+
+function buildFileTree(nodes) {
+  const root = { id: '__root__', name: '根目录', type: 'galaxy', path: 'root', children: [], depth: 0 }
+
+  for (const node of nodes) {
+    const pathParts = (node.path || 'root').split('/')
+    // path is like "root/userID" or "root/userID/galaxyID"
+    // Skip "root" and userID, the rest are galaxy IDs forming the hierarchy
+    const hierarchyIds = pathParts.slice(2)
+    insertIntoTree(root, hierarchyIds, node)
+  }
+
+  sortTree(root)
+  return root.children
+}
+
+function insertIntoTree(parent, hierarchyIds, node) {
+  if (hierarchyIds.length === 0) {
+    // This node is a direct child of parent
+    parent.children.push({
+      id: node.id,
+      name: node.name,
+      type: node.type,
+      path: node.path,
+      children: node.type === 'galaxy' ? [] : undefined,
+      depth: parent.depth + 1
+    })
+    return
+  }
+
+  // Find or create the intermediate galaxy
+  const nextId = hierarchyIds[0]
+  let intermediate = parent.children.find(c => c.id === nextId)
+  if (!intermediate) {
+    // The intermediate galaxy might not be in the nodes list (e.g., it's a parent galaxy)
+    // We need to create a placeholder
+    intermediate = {
+      id: nextId,
+      name: nextId, // Will be updated if found in nodes
+      type: 'galaxy',
+      path: parent.path + '/' + nextId,
+      children: [],
+      depth: parent.depth + 1
+    }
+    parent.children.push(intermediate)
+  }
+  insertIntoTree(intermediate, hierarchyIds.slice(1), node)
+}
+
+function sortTree(node) {
+  if (!node.children) return
+  node.children.sort((a, b) => {
+    // Galaxies first, then notes
+    if (a.type !== b.type) return a.type === 'galaxy' ? -1 : 1
+    return a.name.localeCompare(b.name)
+  })
+  for (const child of node.children) {
+    sortTree(child)
+  }
+}
+
+function toggleExpand(nodeId) {
+  if (expandedPaths.value.has(nodeId)) {
+    expandedPaths.value.delete(nodeId)
+  } else {
+    expandedPaths.value.add(nodeId)
+  }
+}
+
+function isExpanded(nodeId) {
+  return expandedPaths.value.has(nodeId)
+}
+
+async function switchSidebarMode(mode) {
+  sidebarMode.value = mode
+  if (mode === 'tree' && fileTree.value.length === 0) {
+    await loadFileTree()
+  }
+}
+
+function openNoteFromTree(node) {
+  if (node.type === 'note') {
+    openNote({ id: node.id, name: node.name })
+  }
+}
 </script>
 
 <template>
@@ -315,20 +419,38 @@ async function linkTagsToNote(noteId, tags) {
 
       <!-- Main area -->
       <div class="editor-main">
-        <!-- Sidebar - Outline -->
+        <!-- Sidebar -->
         <aside class="editor-sidebar">
           <div class="sidebar-header">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-              <line x1="8" y1="6" x2="21" y2="6"/>
-              <line x1="8" y1="12" x2="21" y2="12"/>
-              <line x1="8" y1="18" x2="21" y2="18"/>
-              <line x1="3" y1="6" x2="3.01" y2="6"/>
-              <line x1="3" y1="12" x2="3.01" y2="12"/>
-              <line x1="3" y1="18" x2="3.01" y2="18"/>
-            </svg>
-            <span>大纲</span>
+            <div class="sidebar-tabs">
+              <button
+                :class="['sidebar-tab', { active: sidebarMode === 'outline' }]"
+                @click="switchSidebarMode('outline')"
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                  <line x1="8" y1="6" x2="21" y2="6"/>
+                  <line x1="8" y1="12" x2="21" y2="12"/>
+                  <line x1="8" y1="18" x2="21" y2="18"/>
+                  <line x1="3" y1="6" x2="3.01" y2="6"/>
+                  <line x1="3" y1="12" x2="3.01" y2="12"/>
+                  <line x1="3" y1="18" x2="3.01" y2="18"/>
+                </svg>
+                大纲
+              </button>
+              <button
+                :class="['sidebar-tab', { active: sidebarMode === 'tree' }]"
+                @click="switchSidebarMode('tree')"
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                  <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/>
+                </svg>
+                文件
+              </button>
+            </div>
           </div>
-          <div class="outline-list">
+
+          <!-- Outline view -->
+          <div v-if="sidebarMode === 'outline'" class="outline-list">
             <button
               v-for="(item, idx) in outline"
               :key="idx"
@@ -339,6 +461,51 @@ async function linkTagsToNote(noteId, tags) {
               {{ item.text }}
             </button>
             <div v-if="outline.length === 0" class="outline-empty">暂无标题</div>
+          </div>
+
+          <!-- File tree view -->
+          <div v-else class="file-tree-list">
+            <template v-for="node in fileTree" :key="node.id">
+              <div
+                :class="['tree-item', { active: currentTabId === node.id }]"
+                :style="{ paddingLeft: `${(node.depth - 1) * 14 + 8}px` }"
+                @click="node.type === 'galaxy' ? toggleExpand(node.id) : openNoteFromTree(node)"
+              >
+                <svg v-if="node.type === 'galaxy'" :class="['tree-arrow', { expanded: isExpanded(node.id) }]" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M9 18l6-6-6-6"/>
+                </svg>
+                <svg v-if="node.type === 'galaxy'" class="tree-icon galaxy-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                  <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/>
+                </svg>
+                <svg v-else class="tree-icon note-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                  <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+                  <polyline points="14 2 14 8 20 8"/>
+                </svg>
+                <span class="tree-name">{{ node.name }}</span>
+              </div>
+              <template v-if="node.type === 'galaxy' && isExpanded(node.id) && node.children">
+                <div
+                  v-for="child in node.children"
+                  :key="child.id"
+                  :class="['tree-item', 'tree-child', { active: currentTabId === child.id }]"
+                  :style="{ paddingLeft: `${(child.depth - 1) * 14 + 8}px` }"
+                  @click="child.type === 'galaxy' ? toggleExpand(child.id) : openNoteFromTree(child)"
+                >
+                  <svg v-if="child.type === 'galaxy'" :class="['tree-arrow', { expanded: isExpanded(child.id) }]" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M9 18l6-6-6-6"/>
+                  </svg>
+                  <svg v-if="child.type === 'galaxy'" class="tree-icon galaxy-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/>
+                  </svg>
+                  <svg v-else class="tree-icon note-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                  </svg>
+                  <span class="tree-name">{{ child.name }}</span>
+                </div>
+              </template>
+            </template>
+            <div v-if="fileTree.length === 0" class="outline-empty">暂无文件</div>
           </div>
         </aside>
 
@@ -594,18 +761,50 @@ async function linkTagsToNote(noteId, tags) {
 .sidebar-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 16px 16px 12px;
-  font-size: 11px;
-  color: var(--text-secondary);
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
-  opacity: 0.6;
+  padding: 10px 10px 0;
   border-bottom: 1px solid var(--glass-border);
 }
 
-.sidebar-header svg {
+.sidebar-tabs {
+  display: flex;
+  gap: 2px;
+  flex: 1;
+}
+
+.sidebar-tab {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 8px 10px;
+  border-radius: 6px 6px 0 0;
+  font-size: 11px;
+  color: var(--text-secondary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-family: inherit;
+  letter-spacing: 0.3px;
+}
+
+.sidebar-tab:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.sidebar-tab.active {
+  color: var(--accent);
+  background: rgba(var(--accent-rgb), 0.08);
+  border-bottom: 1.5px solid var(--accent);
+  margin-bottom: -1px;
+}
+
+.sidebar-tab svg {
   opacity: 0.7;
+}
+
+.sidebar-tab.active svg {
+  opacity: 1;
 }
 
 .outline-list {
@@ -665,6 +864,79 @@ async function linkTagsToNote(noteId, tags) {
   font-size: 11px;
   color: var(--text-secondary);
   opacity: 0.5;
+}
+
+/* File tree */
+.file-tree-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 4px;
+}
+
+.file-tree-list::-webkit-scrollbar {
+  width: 3px;
+}
+
+.file-tree-list::-webkit-scrollbar-thumb {
+  background: var(--glass-border);
+  border-radius: 2px;
+}
+
+.tree-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all 0.12s;
+  font-size: 12px;
+  color: var(--text-secondary);
+  user-select: none;
+}
+
+.tree-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
+}
+
+.tree-item.active {
+  background: rgba(var(--accent-rgb), 0.1);
+  color: var(--accent);
+}
+
+.tree-arrow {
+  flex-shrink: 0;
+  transition: transform 0.15s;
+  opacity: 0.5;
+}
+
+.tree-arrow.expanded {
+  transform: rotate(90deg);
+}
+
+.tree-icon {
+  flex-shrink: 0;
+  opacity: 0.6;
+}
+
+.galaxy-icon {
+  color: var(--accent);
+}
+
+.note-icon {
+  color: var(--text-secondary);
+}
+
+.tree-item.active .tree-icon {
+  opacity: 1;
+}
+
+.tree-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 
 /* Editor area */
