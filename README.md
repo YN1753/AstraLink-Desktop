@@ -1,10 +1,18 @@
-# AstraLink - 星链笔记
+# AstraLink （2.0.0）- 星链笔记
 
 > 书写有序的人生
 
 ## 简介
 
-AstraLink（2.0）是一款本地优先的笔记应用，采用 Go + Vue3 + Wails 构建，支持 Markdown 编辑、Galaxy 视图、全文搜索、双链笔记和个性化头像设置。
+AstraLink（2.0,0）是一款本地优先的笔记应用，采用 Go + Vue3 + Wails 构建，支持 Markdown 编辑、Galaxy 视图、全文搜索、双链笔记。
+
+基于Astralink-1.0版本的轻量化本地程序，解决了1.0的部署复杂，占用高的bug。目前内存占用仅36MB左右，可执行文件大小仅为24MB。
+
+支持两种安装方式： 
+
+​	1.便携版 （解压缩后直接双击exe文件即可，数据存储在同目录下的data文件夹）
+
+​	2.安装版 （下载后双击exe安装程序即可，数据存储在AppData路径下）
 
 ## 技术栈
 
@@ -89,3 +97,13 @@ AstraLink/
 ## License
 
 MIT
+
+### 作者
+
+如果说有什么建议或者好的想法可以进群联系我(记得备注一下)，QQ群:1102628859
+
+
+
+要是觉得好用的话可以随意打赏一些
+
+![image-20260509153104111](C:\Users\Starry\AppData\Roaming\Typora\typora-user-images\image-20260509153104111.png)

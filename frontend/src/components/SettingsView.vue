@@ -1,7 +1,7 @@
 <script setup>
 import { ref, watch, onMounted, onUnmounted } from 'vue'
 import QRCode from 'qrcode'
-import { CheckUpdate, GetVersion } from '../../wailsjs/go/main/App'
+import { CheckUpdate, GetVersion, OpenURL } from '../../wailsjs/go/main/App'
 
 const props = defineProps(['user', 'config', 'themes'])
 const emit = defineEmits(['close', 'update-user', 'update-config', 'update-avatar'])
@@ -38,6 +38,7 @@ const showUpdateModal = ref(false)
 const updateInfo = ref(null)
 const updateToast = ref('')
 const updateError = ref('')
+const copiedToast = ref(false)
 
 async function loadVersion() {
   try {
@@ -45,6 +46,13 @@ async function loadVersion() {
   } catch (e) {
     currentVersion.value = '1.0.0'
   }
+}
+
+function copyQQGroup() {
+  navigator.clipboard.writeText('1102628859').then(() => {
+    copiedToast.value = true
+    setTimeout(() => { copiedToast.value = false }, 2000)
+  })
 }
 
 async function handleCheckUpdate() {
@@ -423,6 +431,33 @@ const showProfileModal = ref(false)
             </div>
           </div>
 
+          <div class="about-links">
+            <button class="github-card" @click="OpenURL('https://github.com/YN1753/AstraLink-Desktop')">
+              <svg class="github-icon" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+              </svg>
+              <div class="about-link-text">
+                <span class="about-link-title">GitHub 开源仓库</span>
+                <span class="about-link-desc">觉得好用的话，给个 Star 支持一下吧</span>
+              </div>
+              <svg class="about-link-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14L21 3"/>
+              </svg>
+            </button>
+            <button class="github-card" @click="copyQQGroup">
+              <svg class="github-icon" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M21.395 15.035a39.548 39.548 0 00-1.51-3.317c.855-1.695 1.155-3.397 1.155-4.988 0-3.477-2.358-6.73-7.04-6.73S6.96 3.253 6.96 6.73c0 1.591.3 4.293 1.155 4.988a39.548 39.548 0 00-1.51 3.317c-1.455.555-2.605 1.365-2.605 2.465 0 1.62 2.277 2.5 5.997 2.5.345 0 .69-.008 1.028-.023.108.368.243.726.405 1.073-.555.173-.933.465-.933.81 0 .577 1.053.93 2.505.93s2.505-.353 2.505-.93c0-.345-.378-.637-.933-.81.162-.347.297-.705.405-1.073.338.015.683.023 1.028.023 3.72 0 5.997-.88 5.997-2.5 0-1.1-1.15-1.91-2.605-2.465z"/>
+              </svg>
+              <div class="about-link-text">
+                <span class="about-link-title">用户交流群</span>
+                <span class="about-link-desc">QQ 群号：1102628859（点击复制）</span>
+              </div>
+              <Transition name="toast-fade">
+                <span v-if="copiedToast" class="copied-badge">已复制</span>
+              </Transition>
+            </button>
+          </div>
+
           <div class="version-info-card">
             <div class="version-info-row">
               <span class="version-label">当前版本</span>
@@ -605,7 +640,7 @@ const showProfileModal = ref(false)
                 <button
                   v-if="!updateInfo.isPortable && updateInfo.exeUrl"
                   class="download-btn"
-                  @click="window.open(updateInfo.exeUrl)"
+                  @click="OpenURL(updateInfo.exeUrl)"
                 >
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                     <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>
@@ -618,7 +653,7 @@ const showProfileModal = ref(false)
                 <button
                   v-if="updateInfo.isPortable && updateInfo.zipUrl"
                   class="download-btn"
-                  @click="window.open(updateInfo.zipUrl)"
+                  @click="OpenURL(updateInfo.zipUrl)"
                 >
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                     <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>
@@ -1665,6 +1700,78 @@ textarea.form-input {
   font-size: 13px;
   font-weight: 500;
   color: var(--text-primary);
+}
+
+/* About links */
+.about-links {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 24px;
+}
+
+.github-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 20px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--glass-border);
+  border-radius: 14px;
+  cursor: pointer;
+  width: 100%;
+  transition: all 0.2s ease;
+  font-family: inherit;
+  color: var(--text-primary);
+}
+
+.github-card:hover {
+  border-color: rgba(var(--accent-rgb), 0.4);
+  background: rgba(var(--accent-rgb), 0.05);
+  transform: translateY(-1px);
+}
+
+.github-icon {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  color: var(--text-primary);
+}
+
+.about-link-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+}
+
+.about-link-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.about-link-desc {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.about-link-arrow {
+  width: 16px;
+  height: 16px;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+  opacity: 0.5;
+}
+
+.copied-badge {
+  font-size: 12px;
+  color: #4ade80;
+  background: rgba(74, 222, 128, 0.1);
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-weight: 500;
+  flex-shrink: 0;
 }
 
 /* Version info card */

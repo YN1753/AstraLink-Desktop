@@ -9,6 +9,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os/exec"
+	"runtime"
 	"strings"
 	"time"
 )
@@ -161,6 +163,17 @@ func (a *App) GetVersion() string {
 	return a.Version
 }
 
+func (a *App) OpenURL(url string) error {
+	switch runtime.GOOS {
+	case "windows":
+		return exec.Command("rundll32", "url.dll,FileProtocolHandler", url).Start()
+	case "darwin":
+		return exec.Command("open", url).Start()
+	default:
+		return exec.Command("xdg-open", url).Start()
+	}
+}
+
 type githubRelease struct {
 	TagName string `json:"tag_name"`
 	Body    string `json:"body"`
@@ -179,6 +192,9 @@ func (a *App) CheckUpdate() (model.UpdateInfo, error) {
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode == 404 {
+		return model.UpdateInfo{HasUpdate: false}, nil
+	}
 	if resp.StatusCode != 200 {
 		return model.UpdateInfo{}, fmt.Errorf("GitHub API 返回 %d", resp.StatusCode)
 	}
