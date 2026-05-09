@@ -272,6 +272,20 @@ async function refreshTags() {
   } catch (e) {}
 }
 
+watch(currentView, (view) => {
+  if (view === 'home') {
+    Promise.all([
+      GetNoteCount(),
+      GetGalaxyCount(),
+      GetTagCount(),
+      GetDataSpace()
+    ]).then(([noteCount, galaxyCount, tagCount, totalSize]) => {
+      stats.value = { noteCount, galaxyCount, tagCount, totalSize }
+    }).catch(() => {})
+    loadRecentNotes()
+  }
+})
+
 onMounted(() => {
   applyTheme(config.value.theme)
   applyFont(config.value.font)
