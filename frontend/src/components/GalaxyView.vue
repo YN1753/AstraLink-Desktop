@@ -1,9 +1,9 @@
 <script setup>
-import { ref, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import * as d3 from 'd3'
 import { GetRelationById, CreateGalaxy, CreateNote, DeleteNode } from '../../wailsjs/go/main/App'
 
-const props = defineProps(['user'])
+const props = defineProps(['user', 'config'])
 const emit = defineEmits(['back', 'open-note'])
 
 const canvasRef = ref(null)
@@ -25,6 +25,11 @@ let dragMoved = false
 let avatarImg = null
 
 const NODE_RADIUS = { user: 36, galaxy: 28, note: 18 }
+
+function getNodeRadius(type) {
+  const scale = props.config?.nodeScale ?? 1
+  return (NODE_RADIUS[type] || 18) * scale
+}
 
 // Read theme colors from CSS variables
 function getThemeColors() {
@@ -78,7 +83,7 @@ function buildGraph(data) {
     id: n.id,
     name: n.title || '未命名',
     type: n.type,
-    radius: NODE_RADIUS[n.type] || 18,
+    radius: getNodeRadius(n.type),
     x: width / 2 + (Math.random() - 0.5) * 200,
     y: height / 2 + (Math.random() - 0.5) * 200
   }))
@@ -227,8 +232,8 @@ function initGraph() {
   })
 
   simulation = d3.forceSimulation(graphNodes)
-    .force('link', d3.forceLink(graphLinks).id(d => d.id).distance(100).strength(0.8))
-    .force('charge', d3.forceManyBody().strength(-200))
+    .force('link', d3.forceLink(graphLinks).id(d => d.id).distance(180).strength(0.5))
+    .force('charge', d3.forceManyBody().strength(-350))
     .force('x', d3.forceX(width / 2).strength(0.05))
     .force('y', d3.forceY(height / 2).strength(0.05))
     .on('tick', render)
@@ -282,8 +287,12 @@ function render() {
     ctx.moveTo(source.x, source.y)
     ctx.lineTo(target.x, target.y)
     ctx.strokeStyle = colors.link
-    ctx.lineWidth = 1.5
-    ctx.setLineDash([4, 4])
+    ctx.lineWidth = props.config?.linkWidth ?? 2
+    if ((props.config?.linkStyle ?? 'dashed') === 'dashed') {
+      ctx.setLineDash([6, 4])
+    } else {
+      ctx.setLineDash([])
+    }
     ctx.stroke()
     ctx.setLineDash([])
   })
@@ -484,6 +493,13 @@ onUnmounted(() => {
   window.removeEventListener('keydown', handleKeydown)
   themeObserver.disconnect()
 })
+
+watch(() => props.config, () => {
+  graphNodes.forEach(n => {
+    n.radius = getNodeRadius(n.type)
+  })
+  render()
+}, { deep: true })
 </script>
 
 <template>

@@ -13,6 +13,7 @@ const fonts = ['Inter', 'Sarasa Fixed SC', 'JetBrains Mono', 'EB Garamond']
 const tabs = [
   { id: 'profile', name: '个人资料', icon: 'user' },
   { id: 'appearance', name: '外观定制', icon: 'palette' },
+  { id: 'galaxy', name: '星系设置', icon: 'orbit' },
   { id: 'about', name: '关于', icon: 'info' },
 ]
 
@@ -92,6 +93,12 @@ const showProfileModal = ref(false)
               <circle cx="8" cy="10" r="1.5" fill="currentColor"/>
               <circle cx="15" cy="8" r="1.5" fill="currentColor"/>
               <circle cx="16" cy="14" r="1.5" fill="currentColor"/>
+            </svg>
+            <svg v-else-if="tab.icon === 'orbit'" class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <circle cx="12" cy="12" r="3"/>
+              <ellipse cx="12" cy="12" rx="10" ry="4"/>
+              <ellipse cx="12" cy="12" rx="10" ry="4" transform="rotate(60 12 12)"/>
+              <ellipse cx="12" cy="12" rx="10" ry="4" transform="rotate(120 12 12)"/>
             </svg>
             <svg v-else-if="tab.icon === 'info'" class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
               <circle cx="12" cy="12" r="9"/>
@@ -192,6 +199,70 @@ const showProfileModal = ref(false)
                 <span class="font-preview" :style="{ fontFamily: f }">Aa</span>
                 <span class="font-name">{{ f }}</span>
               </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Galaxy -->
+        <div v-show="activeTab === 'galaxy'" class="page">
+          <div class="page-header">
+            <h2 class="page-title">星系设置</h2>
+            <p class="page-desc">自定义星系图的节点和连线外观</p>
+          </div>
+
+          <div class="settings-section">
+            <label class="section-label">节点大小</label>
+            <div class="slider-row">
+              <input
+                type="range"
+                class="galaxy-slider"
+                :value="config.nodeScale ?? 1"
+                min="0.6"
+                max="1.6"
+                step="0.1"
+                @input="emit('update-config', { ...config, nodeScale: parseFloat($event.target.value) })"
+              />
+              <span class="slider-value">{{ ((config.nodeScale ?? 1) * 100).toFixed(0) }}%</span>
+            </div>
+          </div>
+
+          <div class="settings-section">
+            <label class="section-label">连线样式</label>
+            <div class="link-style-grid">
+              <button
+                :class="['style-card', { active: (config.linkStyle ?? 'dashed') === 'solid' }]"
+                @click="emit('update-config', { ...config, linkStyle: 'solid' })"
+              >
+                <svg width="48" height="12" viewBox="0 0 48 12">
+                  <line x1="0" y1="6" x2="48" y2="6" stroke="currentColor" stroke-width="2"/>
+                </svg>
+                <span class="style-name">实线</span>
+              </button>
+              <button
+                :class="['style-card', { active: (config.linkStyle ?? 'dashed') === 'dashed' }]"
+                @click="emit('update-config', { ...config, linkStyle: 'dashed' })"
+              >
+                <svg width="48" height="12" viewBox="0 0 48 12">
+                  <line x1="0" y1="6" x2="48" y2="6" stroke="currentColor" stroke-width="2" stroke-dasharray="6 4"/>
+                </svg>
+                <span class="style-name">虚线</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="settings-section">
+            <label class="section-label">连线粗细</label>
+            <div class="slider-row">
+              <input
+                type="range"
+                class="galaxy-slider"
+                :value="config.linkWidth ?? 2"
+                min="1"
+                max="4"
+                step="0.5"
+                @input="emit('update-config', { ...config, linkWidth: parseFloat($event.target.value) })"
+              />
+              <span class="slider-value">{{ (config.linkWidth ?? 2).toFixed(1) }}px</span>
             </div>
           </div>
         </div>
@@ -1114,5 +1185,84 @@ textarea.form-input {
 .modal-fade-enter-from .avatar-picker-modal,
 .modal-fade-enter-from .profile-modal {
   transform: scale(0.92);
+}
+
+/* Galaxy settings */
+.slider-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.galaxy-slider {
+  flex: 1;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  background: var(--glass-border);
+  border-radius: 2px;
+  outline: none;
+}
+
+.galaxy-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(var(--accent-rgb), 0.4);
+  transition: transform 0.15s ease;
+}
+
+.galaxy-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+}
+
+.slider-value {
+  font-size: 13px;
+  color: var(--accent);
+  font-weight: 600;
+  min-width: 44px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.link-style-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+.style-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 20px 16px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: inherit;
+  color: var(--text-secondary);
+}
+
+.style-card:hover {
+  border-color: rgba(var(--accent-rgb), 0.4);
+  background: rgba(var(--accent-rgb), 0.05);
+}
+
+.style-card.active {
+  border-color: var(--accent);
+  background: rgba(var(--accent-rgb), 0.1);
+  color: var(--accent);
+}
+
+.style-name {
+  font-size: 13px;
+  font-weight: 500;
 }
 </style>

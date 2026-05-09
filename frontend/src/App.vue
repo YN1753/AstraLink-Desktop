@@ -27,7 +27,10 @@ const themes = [
 
 const config = ref({
   theme: localStorage.getItem('theme') || 'nebula',
-  font: localStorage.getItem('font') || 'Inter'
+  font: localStorage.getItem('font') || 'Inter',
+  nodeScale: 1,
+  linkStyle: 'dashed',
+  linkWidth: 2
 })
 
 const user = ref({
@@ -103,6 +106,15 @@ async function init() {
       if (userNode.others?.font) {
         config.value.font = userNode.others.font
       }
+      if (userNode.others?.nodeScale != null) {
+        config.value.nodeScale = userNode.others.nodeScale
+      }
+      if (userNode.others?.linkStyle) {
+        config.value.linkStyle = userNode.others.linkStyle
+      }
+      if (userNode.others?.linkWidth != null) {
+        config.value.linkWidth = userNode.others.linkWidth
+      }
 
       if (user.value.id) {
         try {
@@ -174,7 +186,10 @@ async function saveUserConfig() {
         ...user.value.others,
         theme: config.value.theme,
         font: config.value.font,
-        motto: user.value.motto
+        motto: user.value.motto,
+        nodeScale: config.value.nodeScale,
+        linkStyle: config.value.linkStyle,
+        linkWidth: config.value.linkWidth
       }
     })
   } catch (e) {}
@@ -295,6 +310,7 @@ onUnmounted(() => {
       <GalaxyView
           v-else-if="currentView === 'galaxy'"
           :user="user"
+          :config="config"
           @back="currentView = 'home'"
           @open-note="openNoteFromGalaxy"
       />
