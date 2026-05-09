@@ -380,14 +380,6 @@ const showProfileModal = ref(false)
           </div>
 
           <div class="about-hero">
-            <div class="about-logo">
-              <svg viewBox="0 0 48 48" fill="none">
-                <circle cx="24" cy="24" r="20" stroke="var(--accent)" stroke-width="1.5"/>
-                <path d="M24 8l6 3.5v7L24 22l-6-3.5v-7L24 8z" fill="var(--accent)" opacity="0.6"/>
-                <path d="M24 22l6 3.5v7L24 35.5l-6-3.5v-7L24 22z" fill="var(--accent)"/>
-                <circle cx="24" cy="24" r="3" fill="var(--accent)"/>
-              </svg>
-            </div>
             <h3 class="about-title">AstraLink</h3>
             <p class="about-subtitle">双向链接笔记应用</p>
           </div>
@@ -1107,17 +1099,6 @@ const showProfileModal = ref(false)
   text-align: center;
   padding: 32px 0;
   margin-bottom: 24px;
-}
-
-.about-logo {
-  width: 80px;
-  height: 80px;
-  margin: 0 auto 18px;
-}
-
-.about-logo svg {
-  width: 100%;
-  height: 100%;
 }
 
 .about-title {

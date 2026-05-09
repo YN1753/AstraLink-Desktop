@@ -15,7 +15,7 @@ import (
 //go:embed all:frontend/dist
 var assets embed.FS
 
-const AppVersion = "1.0.0"
+var AppVersion = "dev"
 
 func main() {
 	basePath := utils.GetAppStoragePath()
