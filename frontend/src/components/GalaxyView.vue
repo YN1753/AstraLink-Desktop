@@ -198,6 +198,8 @@ async function loadNodes(fullRebuild = false) {
     // update graph incrementally to preserve node positions
     if (simulation && !fullRebuild) {
       updateGraph(data)
+      simulation.nodes(graphNodes)
+      simulation.force('link').links(graphLinks)
       simulation.alpha(0.3).restart()
     } else {
       const graph = buildGraph(data)
@@ -505,10 +507,13 @@ function render() {
   ctx.translate(transform.x, transform.y)
   ctx.scale(transform.k, transform.k)
 
+  // Build node lookup map for O(1) link resolution
+  const nodeMap = new Map(graphNodes.map(n => [n.id, n]))
+
   // Draw links
   graphLinks.forEach(link => {
-    const source = typeof link.source === 'object' ? link.source : graphNodes.find(n => n.id === link.source)
-    const target = typeof link.target === 'object' ? link.target : graphNodes.find(n => n.id === link.target)
+    const source = typeof link.source === 'object' ? link.source : nodeMap.get(link.source)
+    const target = typeof link.target === 'object' ? link.target : nodeMap.get(link.target)
     if (!source || !target) return
 
     ctx.beginPath()
