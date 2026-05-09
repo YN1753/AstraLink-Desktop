@@ -1,6 +1,7 @@
 <script setup>
 import { ref, watch, onMounted, onUnmounted } from 'vue'
 import QRCode from 'qrcode'
+import { CheckUpdate, GetVersion } from '../../wailsjs/go/main/App'
 
 const props = defineProps(['user', 'config', 'themes'])
 const emit = defineEmits(['close', 'update-user', 'update-config', 'update-avatar'])
@@ -30,6 +31,48 @@ const tabs = [
 const showDonateModal = ref(false)
 const donateQrWx = ref('')
 const donateQrAlipay = ref('')
+
+const currentVersion = ref('')
+const checkingUpdate = ref(false)
+const showUpdateModal = ref(false)
+const updateInfo = ref(null)
+const updateToast = ref('')
+const updateError = ref('')
+
+async function loadVersion() {
+  try {
+    currentVersion.value = await GetVersion()
+  } catch (e) {
+    currentVersion.value = '1.0.0'
+  }
+}
+
+async function handleCheckUpdate() {
+  checkingUpdate.value = true
+  updateError.value = ''
+  updateToast.value = ''
+  try {
+    const info = await CheckUpdate()
+    if (info.hasUpdate) {
+      updateInfo.value = info
+      showUpdateModal.value = true
+    } else {
+      updateToast.value = '已是最新版本'
+      setTimeout(() => { updateToast.value = '' }, 2500)
+    }
+  } catch (e) {
+    updateError.value = '检查更新失败，请检查网络'
+    setTimeout(() => { updateError.value = '' }, 3000)
+  } finally {
+    checkingUpdate.value = false
+  }
+}
+
+function formatSize(bytes) {
+  if (!bytes) return ''
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(0) + ' KB'
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
+}
 
 async function generateDonateQr() {
   const style = getComputedStyle(document.documentElement)
@@ -81,6 +124,7 @@ function selectTab(tabId) {
 }
 
 onMounted(() => {
+  loadVersion()
   const container = contentRef.value
   if (!container) return
   observer = new IntersectionObserver((entries) => {
@@ -170,7 +214,7 @@ const showProfileModal = ref(false)
         </nav>
 
         <div class="sidebar-footer">
-          <div class="version-tag">v1.0 Stardust</div>
+          <div class="version-tag">v{{ currentVersion || '1.0.0' }}</div>
         </div>
       </aside>
 
@@ -386,6 +430,32 @@ const showProfileModal = ref(false)
               <span>多主题切换</span>
             </div>
           </div>
+
+          <div class="version-info-card">
+            <div class="version-info-row">
+              <span class="version-label">当前版本</span>
+              <span class="version-value">v{{ currentVersion || '1.0.0' }}</span>
+            </div>
+            <button
+              class="check-update-btn"
+              :class="{ checking: checkingUpdate }"
+              :disabled="checkingUpdate"
+              @click="handleCheckUpdate"
+            >
+              <svg v-if="!checkingUpdate" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M21 12a9 9 0 11-6.22-8.56"/>
+                <path d="M21 3v6h-6"/>
+              </svg>
+              <div v-else class="btn-spinner"></div>
+              <span>{{ checkingUpdate ? '检查中...' : '检查更新' }}</span>
+            </button>
+            <Transition name="toast-fade">
+              <div v-if="updateToast" class="update-toast success">{{ updateToast }}</div>
+            </Transition>
+            <Transition name="toast-fade">
+              <div v-if="updateError" class="update-toast error">{{ updateError }}</div>
+            </Transition>
+          </div>
         </div>
 
         <!-- Donate -->
@@ -509,6 +579,63 @@ const showProfileModal = ref(false)
                   </div>
                   <span class="qr-label">支付宝</span>
                 </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </Transition>
+
+      <!-- Update modal -->
+      <Transition name="modal-fade">
+        <div v-if="showUpdateModal && updateInfo" class="modal-overlay" @click.self="showUpdateModal = false">
+          <div class="update-modal">
+            <div class="modal-header">
+              <h3>发现新版本</h3>
+              <button class="modal-close" @click="showUpdateModal = false">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M18 6L6 18M6 6l12 12"/>
+                </svg>
+              </button>
+            </div>
+            <div class="update-body">
+              <div class="update-version-badge">
+                <span class="update-from">v{{ updateInfo.currentVer }}</span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
+                  <path d="M5 12h14M12 5l7 7-7 7"/>
+                </svg>
+                <span class="update-to">v{{ updateInfo.latestVer }}</span>
+              </div>
+              <div v-if="updateInfo.releaseNote" class="update-notes">
+                <h4>更新日志</h4>
+                <pre>{{ updateInfo.releaseNote }}</pre>
+              </div>
+              <div class="update-downloads">
+                <button
+                  v-if="!updateInfo.isPortable && updateInfo.exeUrl"
+                  class="download-btn"
+                  @click="window.open(updateInfo.exeUrl)"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+                  </svg>
+                  <div class="download-text">
+                    <span class="download-name">下载安装版 (EXE)</span>
+                    <span class="download-size" v-if="updateInfo.exeSize">{{ formatSize(updateInfo.exeSize) }}</span>
+                  </div>
+                </button>
+                <button
+                  v-if="updateInfo.isPortable && updateInfo.zipUrl"
+                  class="download-btn"
+                  @click="window.open(updateInfo.zipUrl)"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+                  </svg>
+                  <div class="download-text">
+                    <span class="download-name">下载便携版 (ZIP)</span>
+                    <span class="download-size" v-if="updateInfo.zipSize">{{ formatSize(updateInfo.zipSize) }}</span>
+                  </div>
+                </button>
               </div>
             </div>
           </div>
@@ -1557,5 +1684,222 @@ textarea.form-input {
   font-size: 13px;
   font-weight: 500;
   color: var(--text-primary);
+}
+
+/* Version info card */
+.version-info-card {
+  margin-top: 24px;
+  padding: 20px 24px;
+  background: rgba(var(--accent-rgb), 0.04);
+  border: 1px solid var(--glass-border);
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.version-info-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.version-label {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.version-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.check-update-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 18px;
+  background: rgba(var(--accent-rgb), 0.12);
+  border: 1px solid rgba(var(--accent-rgb), 0.3);
+  border-radius: 10px;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: inherit;
+}
+
+.check-update-btn:hover:not(:disabled) {
+  background: rgba(var(--accent-rgb), 0.2);
+  border-color: var(--accent);
+}
+
+.check-update-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.check-update-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.check-update-btn.checking svg {
+  animation: spin 1s linear infinite;
+}
+
+.btn-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(var(--accent-rgb), 0.3);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.update-toast {
+  width: 100%;
+  text-align: center;
+  font-size: 12px;
+  padding: 6px 0;
+  border-radius: 8px;
+}
+
+.update-toast.success {
+  color: #4ade80;
+  background: rgba(74, 222, 128, 0.08);
+}
+
+.update-toast.error {
+  color: #f87171;
+  background: rgba(248, 113, 113, 0.08);
+}
+
+.toast-fade-enter-active,
+.toast-fade-leave-active {
+  transition: opacity 0.3s ease;
+}
+
+.toast-fade-enter-from,
+.toast-fade-leave-to {
+  opacity: 0;
+}
+
+/* Update modal */
+.update-modal {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: 20px;
+  width: min(480px, 90vw);
+  overflow: hidden;
+  animation: scaleIn 0.25s ease;
+}
+
+.update-body {
+  padding: 24px 28px 28px;
+}
+
+.update-version-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.update-from {
+  font-size: 16px;
+  color: var(--text-secondary);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.update-to {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--accent);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.update-notes {
+  margin-bottom: 24px;
+}
+
+.update-notes h4 {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin: 0 0 10px 0;
+}
+
+.update-notes pre {
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 200px;
+  overflow-y: auto;
+  padding: 14px 16px;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  margin: 0;
+  font-family: inherit;
+}
+
+.update-downloads {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.download-btn {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 14px 18px;
+  background: rgba(var(--accent-rgb), 0.08);
+  border: 1px solid rgba(var(--accent-rgb), 0.2);
+  border-radius: 14px;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: inherit;
+}
+
+.download-btn:hover {
+  background: rgba(var(--accent-rgb), 0.15);
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+
+.download-btn svg {
+  width: 22px;
+  height: 22px;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.download-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+}
+
+.download-name {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.download-size {
+  font-size: 12px;
+  color: var(--text-secondary);
 }
 </style>

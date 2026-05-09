@@ -32,3 +32,10 @@ func GetAppStoragePath() string {
 	_ = os.MkdirAll(localDataDir, 0755)
 	return localDataDir
 }
+
+func IsPortable() bool {
+	exePath, _ := os.Executable()
+	exeDir := filepath.Dir(exePath)
+	_, err := os.Stat(filepath.Join(exeDir, ".portable"))
+	return err == nil
+}

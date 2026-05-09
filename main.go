@@ -15,6 +15,8 @@ import (
 //go:embed all:frontend/dist
 var assets embed.FS
 
+const AppVersion = "1.0.0"
+
 func main() {
 	basePath := utils.GetAppStoragePath()
 
@@ -28,6 +30,7 @@ func main() {
 	if err != nil {
 		log.Fatal("初始化失败:", err)
 	}
+	appCtx.Version = AppVersion
 
 	// 3. 运行 Wails
 	err = wails.Run(&options.App{

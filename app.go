@@ -4,8 +4,13 @@ import (
 	"astralink/internal/model"
 	"astralink/internal/repo"
 	"astralink/internal/service"
+	"astralink/pkg/utils"
 	"context"
+	"encoding/json"
 	"fmt"
+	"net/http"
+	"strings"
+	"time"
 )
 
 type App struct {
@@ -13,6 +18,7 @@ type App struct {
 	SqliteRepo      *repo.BaseRepo
 	NodeService     *service.NodeService
 	RelationService *service.RelationService
+	Version         string
 }
 
 func NewApp(r *repo.BaseRepo, n *service.NodeService, re *service.RelationService) *App {
@@ -149,4 +155,60 @@ func (a *App) UpdateNodeInfo(req model.UpdateNoteInfoReq) error {
 
 func (a *App) GetRecentNotes(num int) ([]model.Node, error) {
 	return a.NodeService.GetRecentNotes(num)
+}
+
+func (a *App) GetVersion() string {
+	return a.Version
+}
+
+type githubRelease struct {
+	TagName string `json:"tag_name"`
+	Body    string `json:"body"`
+	Assets  []struct {
+		Name               string `json:"name"`
+		BrowserDownloadURL string `json:"browser_download_url"`
+		Size               int64  `json:"size"`
+	} `json:"assets"`
+}
+
+func (a *App) CheckUpdate() (model.UpdateInfo, error) {
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Get("https://api.github.com/repos/YN1753/AstraLink-Desktop/releases/latest")
+	if err != nil {
+		return model.UpdateInfo{}, fmt.Errorf("网络请求失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return model.UpdateInfo{}, fmt.Errorf("GitHub API 返回 %d", resp.StatusCode)
+	}
+
+	var release githubRelease
+	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
+		return model.UpdateInfo{}, fmt.Errorf("解析响应失败: %w", err)
+	}
+
+	latest := strings.TrimPrefix(release.TagName, "v")
+	current := strings.TrimPrefix(a.Version, "v")
+
+	info := model.UpdateInfo{
+		HasUpdate:   latest != current,
+		LatestVer:   latest,
+		CurrentVer:  current,
+		ReleaseNote: release.Body,
+		IsPortable:  utils.IsPortable(),
+	}
+
+	for _, asset := range release.Assets {
+		name := strings.ToLower(asset.Name)
+		if strings.HasSuffix(name, ".exe") || strings.HasSuffix(name, ".msi") {
+			info.ExeURL = asset.BrowserDownloadURL
+			info.ExeSize = asset.Size
+		} else if strings.HasSuffix(name, ".zip") {
+			info.ZipURL = asset.BrowserDownloadURL
+			info.ZipSize = asset.Size
+		}
+	}
+
+	return info, nil
 }
