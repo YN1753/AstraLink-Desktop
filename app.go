@@ -163,6 +163,22 @@ func (a *App) GetVersion() string {
 	return a.Version
 }
 
+func (a *App) SaveAttachment(noteID string, dataURL string, filename string) (string, error) {
+	return a.NodeService.SaveAttachment(noteID, dataURL, filename)
+}
+
+func (a *App) GetAttachmentPath(noteID string, filename string) (string, error) {
+	return a.NodeService.GetAttachmentPath(noteID, filename)
+}
+
+func (a *App) DeleteNoteAssets(noteID string) error {
+	return a.NodeService.DeleteNoteAssets(noteID)
+}
+
+func (a *App) ReadFileAsDataUrl(filePath string) (string, error) {
+	return a.NodeService.ReadFileAsDataUrl(filePath)
+}
+
 func (a *App) OpenURL(url string) error {
 	switch runtime.GOOS {
 	case "windows":

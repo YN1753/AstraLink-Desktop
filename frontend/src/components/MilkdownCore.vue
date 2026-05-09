@@ -9,11 +9,12 @@ import { prism } from '@milkdown/plugin-prism'
 import { indent } from '@milkdown/plugin-indent'
 import { listener, listenerCtx } from '@milkdown/plugin-listener'
 import { clipboard } from '@milkdown/plugin-clipboard'
+import { OnFileDrop, OnFileDropOff } from '../../wailsjs/runtime/runtime'
 import { TooltipProvider } from '@milkdown/plugin-tooltip'
 import { SlashProvider } from '@milkdown/plugin-slash'
 import { nord } from '@milkdown/theme-nord'
 import { parserCtx, serializerCtx } from '@milkdown/core'
-import { SearchNotes, GetNoteContent } from '../../wailsjs/go/main/App'
+import { SearchNotes, GetNoteContent, SaveAttachment, GetAttachmentPath, OpenURL, ReadFileAsDataUrl } from '../../wailsjs/go/main/App'
 
 import Prism from 'prismjs'
 window.Prism = Prism
@@ -32,7 +33,7 @@ import 'prismjs/components/prism-json'
 import 'prismjs/components/prism-yaml'
 import 'prismjs/components/prism-markdown'
 
-const props = defineProps(['modelValue'])
+const props = defineProps(['modelValue', 'noteId'])
 const emit = defineEmits(['update:modelValue', 'open-note', 'show-link-picker'])
 
 let tooltipProvider = null
@@ -80,6 +81,7 @@ function createSlashElement() {
     { icon: '>', label: '引用', action: 'blockquote' },
     { icon: '{}', label: '代码块', action: 'codeBlock' },
     { icon: '▦', label: '表格', action: 'table' },
+    { icon: '📎', label: '附件', action: 'attachment' },
   ]
 
   el.innerHTML = items.map(item => `
@@ -285,6 +287,23 @@ function handleEditorClick(e) {
     e.preventDefault()
     const noteId = link.getAttribute('data-note-id') || link.getAttribute('href')?.replace(/^note:/, '')
     if (noteId) emit('open-note', noteId)
+    return
+  }
+
+  const attachLink = e.target.closest('a[href^="assets/"]')
+  if (attachLink) {
+    const href = attachLink.getAttribute('href')
+    if (href && href.endsWith('.pdf')) {
+      e.preventDefault()
+      const parts = href.split('/')
+      if (parts.length >= 3) {
+        const noteId = parts[1]
+        const filename = parts.slice(2).join('/')
+        GetAttachmentPath(noteId, filename).then((fullPath) => {
+          if (fullPath) OpenURL(fullPath)
+        })
+      }
+    }
   }
 }
 
@@ -540,12 +559,76 @@ function executeSlashCommand(action) {
         }
         break
       }
+      case 'attachment': {
+        const input = document.createElement('input')
+        input.type = 'file'
+        input.accept = 'image/png,image/jpeg,image/gif,image/webp,image/svg+xml,application/pdf'
+        input.multiple = true
+        input.onchange = async () => {
+          const files = input.files
+          if (!files || files.length === 0) return
+
+          const editor = get()
+          if (!editor) return
+
+          for (const file of files) {
+            try {
+              editor.action((ctx) => {
+                const view = ctx.get(editorViewCtx)
+                if (!view) return
+                const { schema: sch } = view.state
+                uploadSingleFile(file, sch).then(node => {
+                  if (!node) return
+                  const { state, dispatch: disp } = view
+                  const insertPos = state.selection.from
+                  disp(state.tr.insert(insertPos, node))
+                  view.focus()
+                })
+              })
+            } catch (e) {
+              console.error('Attachment upload failed:', e)
+            }
+          }
+        }
+        input.click()
+        break
+      }
     }
 
     dispatch(tr)
     view.focus()
     if (slashProvider) slashProvider.hide()
   })
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result)
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
+}
+
+// Upload a single file and return a ProseMirror node, or null
+async function uploadSingleFile(file, schema) {
+  const isImage = file.type.startsWith('image/')
+  const isPDF = file.type === 'application/pdf'
+  if (!isImage && !isPDF) return null
+
+  const dataUrl = await readFileAsDataUrl(file)
+
+  if (isImage) {
+    // Images: use base64 data URL directly, renders inline
+    return schema.nodes.image.createAndFill({ src: dataUrl, alt: file.name })
+  }
+
+  // PDFs: save to disk, use relative path as link
+  const noteId = props.noteId
+  if (!noteId || noteId.startsWith('new-')) return null
+  const relativePath = await SaveAttachment(noteId, dataUrl, file.name)
+  const linkMark = schema.marks.link.create({ href: relativePath })
+  return schema.text(file.name, [linkMark])
 }
 
 const { get } = useEditor((root) => {
@@ -581,6 +664,90 @@ onMounted(() => {
 
   linkEl.addEventListener('input', handleLinkInput)
   linkEl.addEventListener('click', handleLinkClick)
+
+  // Handle paste with images/PDFs directly on the editor DOM
+  const editorEl = document.querySelector('.milkdown-wrapper')
+  if (editorEl) {
+    editorEl.addEventListener('paste', (e) => {
+      const files = e.clipboardData?.files
+      if (!files || files.length === 0) return
+      const hasAttachment = Array.from(files).some(f =>
+        f.type.startsWith('image/') || f.type === 'application/pdf'
+      )
+      if (!hasAttachment) return
+
+      e.preventDefault()
+      e.stopPropagation()
+
+      const editor = get()
+      if (!editor) return
+
+      editor.action((ctx) => {
+        const view = ctx.get(editorViewCtx)
+        if (!view) return
+        const { schema } = view.state
+        const insertPos = view.state.selection.from
+
+        for (const file of files) {
+          uploadSingleFile(file, schema).then(node => {
+            if (!node) return
+            const { state, dispatch: disp } = view
+            disp(state.tr.insert(insertPos, node))
+            view.focus()
+          }).catch(err => console.error('Paste upload failed:', err))
+        }
+      })
+    }, true)
+  }
+
+  // Handle native file drops via Wails runtime
+  // (Wails intercepts file drops at native level, webview DOM events don't fire)
+  OnFileDrop(async (_x, _y, paths) => {
+    if (!paths || paths.length === 0) return
+
+    const editor = get()
+    if (!editor) return
+
+    for (const filePath of paths) {
+      try {
+        const fileName = filePath.split(/[/\\]/).pop() || 'file'
+        const ext = fileName.split('.').pop()?.toLowerCase() || ''
+        const isImage = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes(ext)
+        const isPDF = ext === 'pdf'
+        if (!isImage && !isPDF) continue
+
+        // Read file from disk via Go backend
+        const dataUrl = await ReadFileAsDataUrl(filePath)
+
+        editor.action((ctx) => {
+          const view = ctx.get(editorViewCtx)
+          if (!view) return
+          const { state, dispatch: disp } = view
+          const { schema } = state
+          const insertPos = state.selection.from
+
+          if (isImage) {
+            const node = schema.nodes.image.createAndFill({ src: dataUrl, alt: fileName })
+            if (node) disp(state.tr.insert(insertPos, node))
+          } else {
+            // PDF: save to assets and insert as link
+            const noteId = props.noteId
+            if (!noteId || noteId.startsWith('new-')) return
+            SaveAttachment(noteId, dataUrl, fileName).then(relativePath => {
+              const linkMark = schema.marks.link.create({ href: relativePath })
+              const textNode = schema.text(fileName, [linkMark])
+              disp(state.tr.insert(insertPos, textNode))
+              view.focus()
+            })
+            return
+          }
+          view.focus()
+        })
+      } catch (e) {
+        console.error('File drop upload failed:', e)
+      }
+    }
+  }, true)
 
   pollTimer = setInterval(() => {
     const editor = get()
@@ -639,6 +806,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  try { OnFileDropOff() } catch (e) {}
   if (pollTimer) clearInterval(pollTimer)
   if (hoverTimeout) clearTimeout(hoverTimeout)
   if (tooltipProvider) tooltipProvider.destroy()
@@ -827,6 +995,32 @@ onUnmounted(() => {
   opacity: 0.8;
   display: flex;
   align-items: center;
+}
+
+/* PDF / attachment links */
+:deep(.ProseMirror a[href^="assets/"][href$=".pdf"]) {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  border-radius: 6px;
+  color: #f87171;
+  font-size: 13px;
+  text-decoration: none;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+:deep(.ProseMirror a[href^="assets/"][href$=".pdf"]::before) {
+  content: '\1F4C4';
+  font-size: 14px;
+}
+
+:deep(.ProseMirror a[href^="assets/"][href$=".pdf"]:hover) {
+  background: rgba(239, 68, 68, 0.18);
+  transform: translateY(-1px);
 }
 
 /* Strong and emphasis */

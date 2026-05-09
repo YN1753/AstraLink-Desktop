@@ -7,7 +7,7 @@ import (
 
 func GetStorageSize(basePath string) (int64, error) {
 	var total int64
-	dirs := []string{"db", "notes", "avatar"}
+	dirs := []string{"db", "notes", "avatar", "assets"}
 	for _, d := range dirs {
 		dirPath := filepath.Join(basePath, d)
 		size, err := dirSize(dirPath)

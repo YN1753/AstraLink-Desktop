@@ -516,6 +516,7 @@ function openNoteFromTree(node) {
               ref="editorCoreRef"
               :key="currentTabId"
               v-model="currentContent"
+              :noteId="currentTabId"
               @update:modelValue="onContentChange"
               @show-link-picker="showLinkPicker"
               @open-note="handleOpenNoteFromLink"

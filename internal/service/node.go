@@ -62,13 +62,10 @@ func (n *NodeService) GetUserInfo(userID string) (model.Node, error) { //获取�
 }
 func (n *NodeService) UploadAvatar(id string, avatar string) (string, error) {
 	// 解析数据 URL: "data:image/png;base64,..."
-	commaIdx := strings.Index(avatar, ",")
-	if commaIdx == -1 {
+	header, dataPart, ok := strings.Cut(avatar, ",")
+	if !ok {
 		return "", fmt.Errorf("invalid data URL")
 	}
-
-	// 从 header 提取 MIME 类型并转换为扩展名
-	header := avatar[:commaIdx]
 	ext := ".jpg"
 	if strings.Contains(header, "image/png") {
 		ext = ".png"
@@ -79,7 +76,7 @@ func (n *NodeService) UploadAvatar(id string, avatar string) (string, error) {
 	}
 
 	// 解码 base64 数据
-	data, err := base64.StdEncoding.DecodeString(avatar[commaIdx+1:])
+	data, err := base64.StdEncoding.DecodeString(dataPart)
 	if err != nil {
 		return "", fmt.Errorf("base64 decode failed: %v", err)
 	}
@@ -119,6 +116,99 @@ func (n *NodeService) GetAvatar(id string) (string, error) { //获取头像
 		mimeType = "image/webp"
 	}
 	return "data:" + mimeType + ";base64," + base64.StdEncoding.EncodeToString(data), nil
+}
+
+var allowedAttachmentTypes = map[string]string{
+	"image/png":      ".png",
+	"image/jpeg":     ".jpg",
+	"image/jpg":      ".jpg",
+	"image/gif":      ".gif",
+	"image/webp":     ".webp",
+	"image/svg+xml":  ".svg",
+	"application/pdf": ".pdf",
+}
+
+func (n *NodeService) SaveAttachment(noteID string, dataURL string, filename string) (string, error) {
+	header, dataPart, ok := strings.Cut(dataURL, ",")
+	if !ok {
+		return "", fmt.Errorf("invalid data URL")
+	}
+	mimeType := ""
+	for mime := range allowedAttachmentTypes {
+		if strings.Contains(header, mime) {
+			mimeType = mime
+			break
+		}
+	}
+	if mimeType == "" {
+		return "", fmt.Errorf("unsupported file type")
+	}
+
+	data, err := base64.StdEncoding.DecodeString(dataPart)
+	if err != nil {
+		return "", fmt.Errorf("base64 decode failed: %v", err)
+	}
+
+	// Sanitize filename
+	sanitized := filepath.Base(filename)
+	sanitized = strings.ReplaceAll(sanitized, "\\", "")
+	sanitized = strings.ReplaceAll(sanitized, "/", "")
+	if len(sanitized) > 200 {
+		sanitized = sanitized[:200]
+	}
+	// Ensure correct extension
+	ext := allowedAttachmentTypes[mimeType]
+	if filepath.Ext(sanitized) == "" {
+		sanitized += ext
+	}
+
+	subDir := filepath.Join("assets", noteID)
+	_, err = n.base.SaveLocalFile(subDir, bytes.NewReader(data), sanitized)
+	if err != nil {
+		return "", err
+	}
+	return "assets/" + noteID + "/" + sanitized, nil
+}
+
+func (n *NodeService) GetAttachmentPath(noteID string, filename string) (string, error) {
+	fullPath := filepath.Join(n.base.GetRootPath(), "assets", noteID, filename)
+	if _, err := os.Stat(fullPath); err != nil {
+		return "", fmt.Errorf("file not found: %v", err)
+	}
+	return fullPath, nil
+}
+
+func (n *NodeService) ReadFileAsDataUrl(filePath string) (string, error) {
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return "", err
+	}
+	ext := strings.ToLower(filepath.Ext(filePath))
+	mimeType := "application/octet-stream"
+	switch ext {
+	case ".png":
+		mimeType = "image/png"
+	case ".jpg", ".jpeg":
+		mimeType = "image/jpeg"
+	case ".gif":
+		mimeType = "image/gif"
+	case ".webp":
+		mimeType = "image/webp"
+	case ".svg":
+		mimeType = "image/svg+xml"
+	case ".pdf":
+		mimeType = "application/pdf"
+	}
+	return "data:" + mimeType + ";base64," + base64.StdEncoding.EncodeToString(data), nil
+}
+
+func (n *NodeService) DeleteNoteAssets(noteID string) error {
+	dirPath := filepath.Join(n.base.GetRootPath(), "assets", noteID)
+	err := os.RemoveAll(dirPath)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	return err
 }
 
 func (n *NodeService) GetDataSpace() (int64, error) { //获取占用空间大小
@@ -239,6 +329,7 @@ func (n *NodeService) DeleteNode(id string) error { //删除节点包括本地�
 
 	if node.Type == "note" && node.Address != "" {
 		os.Remove(node.Address)
+		_ = n.DeleteNoteAssets(id)
 	} else if node.Type == "user" && node.Address != "" {
 		os.Remove(node.Address)
 	}

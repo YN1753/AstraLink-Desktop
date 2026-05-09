@@ -1,6 +1,7 @@
 package main
 
 import (
+	"astralink/internal/handler"
 	"astralink/pkg/utils"
 	"embed"
 	"log"
@@ -21,7 +22,7 @@ func main() {
 	basePath := utils.GetAppStoragePath()
 
 	// 物理目录初始化
-	dirs := []string{"db", "index", "notes", "avatar"}
+	dirs := []string{"db", "index", "notes", "avatar", "assets"}
 	for _, d := range dirs {
 		os.MkdirAll(filepath.Join(basePath, d), 0755)
 	}
@@ -33,10 +34,12 @@ func main() {
 	appCtx.Version = AppVersion
 
 	// 3. 运行 Wails
+	assetHandler := handler.NewAssetHandler(basePath)
 	err = wails.Run(&options.App{
 		Title: "AstraLink - 星链笔记",
 		AssetServer: &assetserver.Options{
-			Assets: assets,
+			Assets:  assets,
+			Handler: assetHandler,
 		},
 		Bind: []any{
 			appCtx,
