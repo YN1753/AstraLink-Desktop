@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import * as d3 from 'd3'
-import { GetRelationById, CreateGalaxy, CreateNote, DeleteNode } from '../../wailsjs/go/main/App'
+import { GetRelationById, CreateGalaxy, CreateNote, DeleteNode, UpdateNodeInfo, GetUserInfo, GetNoteCount, GetGalaxyCount, GetTagCount, GetAvatar } from '../../wailsjs/go/main/App'
 
 const props = defineProps(['user', 'config'])
 const emit = defineEmits(['back', 'open-note'])
@@ -11,6 +11,27 @@ const nodes = ref([])
 const loading = ref(true)
 const showCreateMenu = ref(false)
 const contextMenu = ref({ show: false, x: 0, y: 0, node: null })
+
+// Sub-galaxy navigation
+let currentCenterId = null
+let currentCenterPath = null
+let currentCenterName = ''
+let parentGalaxyId = null
+
+// Profile popup
+const showProfile = ref(false)
+const profileData = ref({ user: null, avatar: '', noteCount: 0, galaxyCount: 0, tagCount: 0 })
+
+// Breadcrumb
+const breadcrumbs = ref([])
+
+// Rename modal
+const showRename = ref(false)
+const renameTarget = ref({ id: '', name: '' })
+const renameInput = ref('')
+
+// Click timer for single/double click
+let clickTimer = null
 
 let simulation = null
 let canvas = null
@@ -40,21 +61,9 @@ function getThemeColors() {
   const bgApp = style.getPropertyValue('--bg-app').trim() || '#050505'
 
   return {
-    user: {
-      fill: bgApp,
-      stroke: accent,
-      label: textPrimary
-    },
-    galaxy: {
-      fill: accent + '18',
-      stroke: accent,
-      label: textPrimary
-    },
-    note: {
-      fill: accent + '10',
-      stroke: accent + 'aa',
-      label: textSecondary
-    },
+    user: { fill: bgApp, stroke: accent, label: textPrimary },
+    galaxy: { fill: accent + '18', stroke: accent, label: textPrimary },
+    note: { fill: accent + '10', stroke: accent + 'aa', label: textSecondary },
     link: textPrimary + '14',
     textPrimary,
     textSecondary,
@@ -74,61 +83,222 @@ function loadAvatar() {
 }
 
 function buildGraph(data) {
-  const gNodes = (data.nodes || []).map(n => ({
-    id: n.id,
-    name: n.title || '未命名',
-    type: n.type,
-    radius: getNodeRadius(n.type),
-    x: width / 2 + (Math.random() - 0.5) * 200,
-    y: height / 2 + (Math.random() - 0.5) * 200
-  }))
+  const isRoot = currentCenterId === props.user.id
 
-  // Center the user node
-  const userNode = gNodes.find(n => n.type === 'user')
-  if (userNode) {
-    userNode.x = width / 2
-    userNode.y = height / 2
-    userNode.fx = width / 2
-    userNode.fy = height / 2
+  // GetRelationById returns descendants but NOT the center node itself.
+  // The links also won't include the center node since its ID wasn't in the query set.
+  // We need to: (1) add the center node manually, (2) fetch links involving the center.
+
+  // Find center in the returned data (only happens for root user)
+  const centerInData = data.nodes.find(n => n.id === currentCenterId)
+  const centerGraphNode = centerInData
+    ? {
+        id: centerInData.id,
+        name: centerInData.title || '未命名',
+        type: centerInData.type,
+        radius: getNodeRadius(centerInData.type),
+        x: width / 2,
+        y: height / 2,
+        fx: width / 2,
+        fy: height / 2
+      }
+    : {
+        id: currentCenterId,
+        name: currentCenterName || '未命名',
+        type: isRoot ? 'user' : 'galaxy',
+        radius: getNodeRadius(isRoot ? 'user' : 'galaxy'),
+        x: width / 2,
+        y: height / 2,
+        fx: width / 2,
+        fy: height / 2
+      }
+
+  // Build child nodes (exclude the center node to avoid duplicates)
+  const childNodes = (data.nodes || [])
+    .filter(n => n.id !== currentCenterId)
+    .map((n, i, arr) => {
+      const angle = (2 * Math.PI * i) / arr.length
+      const dist = 180 + Math.random() * 60
+      return {
+        id: n.id,
+        name: n.title || '未命名',
+        type: n.type,
+        radius: getNodeRadius(n.type),
+        x: width / 2 + Math.cos(angle) * dist,
+        y: height / 2 + Math.sin(angle) * dist
+      }
+    })
+
+  const gNodes = [centerGraphNode, ...childNodes]
+  const nodeIdSet = new Set(gNodes.map(n => n.id))
+
+  // For non-root views, GetRelationById won't have links to the center node
+  // because the center wasn't in its node set. We need to fetch those links
+  // from the raw relations. But since we only have the D3Graph output,
+  // we create center links based on the child node paths.
+  // All returned child nodes are direct children of the center, so link them.
+  const gLinks = []
+
+  // Include links from the API where both endpoints exist in our graph
+  for (const l of (data.links || [])) {
+    if (nodeIdSet.has(l.source) && nodeIdSet.has(l.target)) {
+      gLinks.push({ source: l.source, target: l.target, type: l.type })
+    }
   }
 
-  const gLinks = (data.links || []).map(l => ({
-    source: l.source,
-    target: l.target,
-    type: l.type
-  }))
+  // For non-root: the API won't have links from center to children,
+  // so we add them manually (all returned nodes are children of the center)
+  if (!isRoot) {
+    const existingLinkTargets = new Set(gLinks.map(l => l.target))
+    for (const child of childNodes) {
+      // Only add if no link already exists to this child
+      if (!existingLinkTargets.has(child.id)) {
+        gLinks.push({ source: currentCenterId, target: child.id, type: child.type })
+      }
+    }
+  }
 
   return { nodes: gNodes, links: gLinks }
 }
 
-async function loadNodes() {
+async function loadNodes(fullRebuild = false) {
   loading.value = true
   try {
-    // Get container size before building graph
     const container = canvasRef.value
     if (container) {
       width = container.clientWidth
       height = container.clientHeight
     }
 
-    const data = await GetRelationById(props.user.id)
+    if (!currentCenterId) {
+      currentCenterId = props.user.id
+      currentCenterPath = 'root'
+      parentGalaxyId = null
+    }
+
+    const isRoot = currentCenterId === props.user.id
+
+    let data
+    if (isRoot) {
+      currentCenterName = props.user.username
+      data = await GetRelationById(props.user.id)
+    } else {
+      try {
+        const nodeInfo = await GetUserInfo(currentCenterId)
+        currentCenterName = nodeInfo.name
+      } catch (e) {
+        console.error('Failed to get node info:', e)
+      }
+      data = await GetRelationById(currentCenterId)
+    }
+
     nodes.value = data.nodes || []
-    const graph = buildGraph(data)
-    graphNodes = graph.nodes
-    graphLinks = graph.links
 
-    // Release user fixed position after initial layout
-    setTimeout(() => {
-      const un = graphNodes.find(n => n.type === 'user')
-      if (un) { un.fx = null; un.fy = null }
-    }, 2000)
+    // If simulation already exists and not a full rebuild (entering sub-galaxy),
+    // update graph incrementally to preserve node positions
+    if (simulation && !fullRebuild) {
+      updateGraph(data)
+      simulation.alpha(0.3).restart()
+    } else {
+      const graph = buildGraph(data)
+      graphNodes = graph.nodes
+      graphLinks = graph.links
+    }
 
-    initGraph()
+    await buildBreadcrumbs()
+
+    if (!simulation || fullRebuild) {
+      initGraph()
+    }
   } catch (e) {
     console.error('Failed to load graph:', e)
   } finally {
     loading.value = false
   }
+}
+
+// Incremental graph update: preserve existing node positions
+function updateGraph(data) {
+  const isRoot = currentCenterId === props.user.id
+  const existingMap = new Map(graphNodes.map(n => [n.id, n]))
+
+  // Build new node list
+  const newNodes = []
+
+  // Center node
+  const existingCenter = existingMap.get(currentCenterId)
+  if (existingCenter) {
+    existingCenter.name = currentCenterName || existingCenter.name
+    newNodes.push(existingCenter)
+  } else {
+    newNodes.push({
+      id: currentCenterId,
+      name: currentCenterName || '未命名',
+      type: isRoot ? 'user' : 'galaxy',
+      radius: getNodeRadius(isRoot ? 'user' : 'galaxy'),
+      x: width / 2,
+      y: height / 2,
+      fx: width / 2,
+      fy: height / 2
+    })
+  }
+
+  // Child nodes: keep existing positions, add new ones in a circle
+  const childData = (data.nodes || []).filter(n => n.id !== currentCenterId)
+  const newChildIds = new Set()
+
+  for (const n of childData) {
+    const existing = existingMap.get(n.id)
+    if (existing) {
+      existing.name = n.title || existing.name
+      newNodes.push(existing)
+    } else {
+      newChildIds.add(n.id)
+      newNodes.push({
+        id: n.id,
+        name: n.title || '未命名',
+        type: n.type,
+        radius: getNodeRadius(n.type),
+        x: 0,
+        y: 0
+      })
+    }
+  }
+
+  // Position new children in a circle around center
+  const centerNode = newNodes[0]
+  const newChildren = newNodes.filter(n => n.id !== currentCenterId && newChildIds.has(n.id))
+  newChildren.forEach((n, i) => {
+    const angle = (2 * Math.PI * i) / Math.max(newChildren.length, 1)
+    const dist = 180 + Math.random() * 60
+    n.x = centerNode.x + Math.cos(angle) * dist
+    n.y = centerNode.y + Math.sin(angle) * dist
+  })
+
+  // Update links
+  const nodeIdSet = new Set(newNodes.map(n => n.id))
+  const newLinks = []
+
+  for (const l of (data.links || [])) {
+    if (nodeIdSet.has(l.source) && nodeIdSet.has(l.target)) {
+      newLinks.push({ source: l.source, target: l.target, type: l.type })
+    }
+  }
+
+  if (!isRoot) {
+    const existingLinkTargets = new Set(newLinks.map(l => l.target))
+    for (const n of newNodes) {
+      if (n.id !== currentCenterId && !existingLinkTargets.has(n.id)) {
+        newLinks.push({ source: currentCenterId, target: n.id, type: n.type })
+      }
+    }
+  }
+
+  // Replace arrays in-place so D3 simulation references stay valid
+  graphNodes.length = 0
+  graphNodes.push(...newNodes)
+  graphLinks.length = 0
+  graphLinks.push(...newLinks)
 }
 
 function initGraph() {
@@ -150,7 +320,13 @@ function initGraph() {
   ctx = canvas.node().getContext('2d')
   ctx.scale(devicePixelRatio, devicePixelRatio)
 
-  // Drag — register BEFORE zoom so it fires first
+  const canvasEl = canvas.node()
+
+  // IMPORTANT: Register dblclick BEFORE D3 zoom to ensure our capture-phase handler
+  // fires before D3's internal bubble-phase handler (which calls stopImmediatePropagation)
+  canvasEl.addEventListener('dblclick', handleDblClick, { capture: true })
+
+  // Drag
   let dragTarget = null
   let dragStartX = 0
   let dragStartY = 0
@@ -161,7 +337,6 @@ function initGraph() {
     const node = findNode(sx, sy)
     if (!node) return
 
-    // Block zoom from seeing this event
     event.stopImmediatePropagation()
     event.preventDefault()
 
@@ -198,7 +373,7 @@ function initGraph() {
     window.addEventListener('mouseup', onUp)
   })
 
-  // Zoom — registered after drag
+  // Zoom
   const zoom = d3.zoom()
     .scaleExtent([0.3, 4])
     .on('zoom', (event) => {
@@ -211,8 +386,8 @@ function initGraph() {
     .on('mousemove', handleMouseMove)
     .on('mouseleave', () => { hoveredNode = null; render() })
 
-  // Direct context menu on canvas
-  canvas.node().addEventListener('contextmenu', (e) => {
+  // Context menu on canvas
+  canvasEl.addEventListener('contextmenu', (e) => {
     e.preventDefault()
     e.stopPropagation()
     const [x, y] = transform.invert([e.offsetX, e.offsetY])
@@ -231,7 +406,19 @@ function initGraph() {
     .force('charge', d3.forceManyBody().strength(-350))
     .force('x', d3.forceX(width / 2).strength(0.05))
     .force('y', d3.forceY(height / 2).strength(0.05))
+    .force('collision', d3.forceCollide().radius(d => d.radius + 8).strength(0.7))
     .on('tick', render)
+
+  simulation.alpha(0.6).restart()
+
+  // Release center fixed position after layout stabilizes
+  setTimeout(() => {
+    const center = graphNodes.find(n => n.id === currentCenterId)
+    if (center) {
+      center.fx = null
+      center.fy = null
+    }
+  }, 2500)
 }
 
 function findNode(x, y) {
@@ -248,9 +435,54 @@ function handleClick(event) {
   if (dragMoved) return
   const [x, y] = transform.invert([event.offsetX, event.offsetY])
   const node = findNode(x, y)
-  if (node && node.type === 'note') {
-    emit('open-note', { id: node.id, name: node.name })
+  if (!node) return
+
+  if (node.type === 'user') {
+    showUserProfile()
+    return
   }
+
+  if (node.type === 'note') {
+    emit('open-note', { id: node.id, name: node.name })
+    return
+  }
+
+  if (node.type === 'galaxy') {
+    // Single click on galaxy: no action (use double-click to enter)
+    return
+  }
+}
+
+function handleDblClick(event) {
+  event.preventDefault()
+  event.stopPropagation()
+  if (clickTimer) { clearTimeout(clickTimer); clickTimer = null }
+  const [x, y] = transform.invert([event.offsetX, event.offsetY])
+  const node = findNode(x, y)
+  if (node && node.type === 'galaxy') {
+    enterGalaxy(node.id, node.name)
+  }
+}
+
+async function showUserProfile() {
+  showProfile.value = true
+  try {
+    const [userNode, noteCount, galaxyCount, tagCount] = await Promise.all([
+      GetUserInfo(props.user.id),
+      GetNoteCount(),
+      GetGalaxyCount(),
+      GetTagCount()
+    ])
+    let avatar = ''
+    try { avatar = await GetAvatar(props.user.id) } catch (e) {}
+    profileData.value = { user: userNode, avatar, noteCount, galaxyCount, tagCount }
+  } catch (e) {
+    console.error('Failed to load profile:', e)
+  }
+}
+
+function closeProfile() {
+  showProfile.value = false
 }
 
 function handleMouseMove(event) {
@@ -258,7 +490,7 @@ function handleMouseMove(event) {
   const node = findNode(x, y)
   if (node !== hoveredNode) {
     hoveredNode = node
-    canvas.style('cursor', node && node.type === 'note' ? 'pointer' : 'default')
+    canvas.style('cursor', node ? 'pointer' : 'default')
     render()
   }
 }
@@ -299,7 +531,7 @@ function render() {
     const typeColors = colors[n.type] || colors.note
     const r = n.radius
 
-    // User node: unchanged
+    // User node
     if (n.type === 'user') {
       ctx.beginPath()
       ctx.arc(n.x, n.y, r, 0, Math.PI * 2)
@@ -322,18 +554,17 @@ function render() {
         ctx.lineWidth = isHovered ? 2.5 : 1.5
         ctx.stroke()
       } else {
-        ctx.strokeStyle = typeColors.stroke
-        ctx.lineWidth = 1.5
-        ctx.beginPath()
-        ctx.arc(n.x, n.y - 6, 7, 0, Math.PI * 2)
-        ctx.stroke()
-        ctx.beginPath()
-        ctx.arc(n.x, n.y + 14, 13, Math.PI * 1.15, Math.PI * 1.85)
-        ctx.stroke()
+        // No avatar: show first character of username
+        const initial = (props.user.username || '?').charAt(0).toUpperCase()
+        ctx.fillStyle = typeColors.label
+        ctx.font = `600 ${r * 0.7}px ${bodyFont}`
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'middle'
+        ctx.fillText(initial, n.x, n.y)
       }
     }
 
-    // Galaxy: flat circle + single inner ring + center dot
+    // Galaxy
     if (n.type === 'galaxy') {
       ctx.beginPath()
       ctx.arc(n.x, n.y, r, 0, Math.PI * 2)
@@ -357,7 +588,7 @@ function render() {
       ctx.fill()
     }
 
-    // Note: flat circle + simple page icon
+    // Note
     if (n.type === 'note') {
       ctx.beginPath()
       ctx.arc(n.x, n.y, r, 0, Math.PI * 2)
@@ -371,11 +602,9 @@ function render() {
       const s = r * 0.38
       ctx.strokeStyle = isHovered ? colors.accent : colors.accent + '77'
       ctx.lineWidth = 1.2
-      // Page outline
       ctx.beginPath()
       ctx.rect(n.x - s, n.y - s * 1.2, s * 2, s * 2.4)
       ctx.stroke()
-      // Two text lines
       ctx.beginPath()
       ctx.moveTo(n.x - s * 0.55, n.y - s * 0.3)
       ctx.lineTo(n.x + s * 0.55, n.y - s * 0.3)
@@ -397,16 +626,17 @@ function render() {
   ctx.restore()
 }
 
-
 async function createNode(type) {
   const name = type === 'galaxy' ? '新星系' : '新笔记'
-  const parentId = props.user.id
+  const parentId = currentCenterId
+  const isRoot = currentCenterId === props.user.id
+  const parentPath = isRoot ? 'root' : currentCenterPath
   try {
     if (type === 'galaxy') {
       await CreateGalaxy({
         id: '', name,
         parentId,
-        parentPath: 'root',
+        parentPath,
         others: {}
       })
     } else {
@@ -414,12 +644,12 @@ async function createNode(type) {
         name,
         file: '# ' + name + '\n\n在此输入正文...',
         parentId,
-        parentPath: 'root',
+        parentPath,
         others: {}
       })
     }
     showCreateMenu.value = false
-    await loadNodes()
+    await loadNodes(false) // incremental update, preserve positions
   } catch (e) {
     console.error('Create node failed:', e)
   }
@@ -445,6 +675,8 @@ function closeContextMenu() {
 function handleKeydown(e) {
   if (e.key === 'Escape') {
     closeContextMenu()
+    showProfile.value = false
+    showRename.value = false
   }
 }
 
@@ -453,10 +685,146 @@ async function deleteContextNode() {
   try {
     await DeleteNode(contextMenu.value.node.id)
     closeContextMenu()
-    await loadNodes()
+    await loadNodes(false)
   } catch (e) {
     console.error('Delete node failed:', e)
   }
+}
+
+function openRenameModal() {
+  if (!contextMenu.value.node) return
+  renameTarget.value = { id: contextMenu.value.node.id, name: contextMenu.value.node.name }
+  renameInput.value = contextMenu.value.node.name
+  closeContextMenu()
+  showRename.value = true
+}
+
+async function confirmRename() {
+  if (!renameInput.value.trim()) return
+  try {
+    await UpdateNodeInfo({ id: renameTarget.value.id, title: renameInput.value.trim() })
+    showRename.value = false
+    // Update local state
+    const centerNode = graphNodes.find(n => n.id === renameTarget.value.id)
+    if (centerNode) {
+      centerNode.name = renameInput.value.trim()
+      if (centerNode.id === currentCenterId) currentCenterName = renameInput.value.trim()
+    }
+    const labelNode = graphNodes.find(n => n.id === renameTarget.value.id)
+    if (labelNode) labelNode.name = renameInput.value.trim()
+    await buildBreadcrumbs()
+    render()
+    await loadNodes(false)
+  } catch (e) {
+    console.error('Rename failed:', e)
+  }
+}
+
+// Navigation: enter a galaxy as center
+async function enterGalaxy(galaxyId, galaxyName) {
+  parentGalaxyId = currentCenterId
+  currentCenterId = galaxyId
+  currentCenterName = galaxyName
+
+  // Get the node's actual path from backend for accurate breadcrumbs
+  try {
+    const nodeInfo = await GetUserInfo(galaxyId)
+    currentCenterPath = nodeInfo.path || 'root'
+  } catch (e) {
+    // Fallback: compute from breadcrumbs
+    const isRootParent = parentGalaxyId === props.user.id
+    if (isRootParent) {
+      currentCenterPath = `root/${props.user.id}`
+    } else {
+      currentCenterPath = `${currentCenterPath}/${parentGalaxyId}`
+    }
+  }
+
+  // Determine parent from path
+  const pathParts = currentCenterPath.split('/')
+  if (pathParts.length >= 3) {
+    parentGalaxyId = pathParts[pathParts.length - 1]
+  } else {
+    parentGalaxyId = props.user.id
+  }
+
+  await loadNodes(true)
+}
+
+// Navigation: go back to parent
+async function goBack() {
+  if (currentCenterId === props.user.id) {
+    emit('back')
+    return
+  }
+  showProfile.value = false
+
+  // Use the current path to determine the parent
+  const pathParts = currentCenterPath.split('/')
+  if (pathParts.length <= 2) {
+    // Current path is like "root/userID", parent is root
+    currentCenterId = props.user.id
+    currentCenterPath = 'root'
+    parentGalaxyId = null
+  } else {
+    // Current path is like "root/userID/g1/g2", parent is g1
+    // Remove last segment to get parent's path
+    const parentPath = pathParts.slice(0, -1).join('/')
+    const parentId = pathParts[pathParts.length - 1]
+
+    // Set parent galaxy
+    if (pathParts.length === 3) {
+      // Parent is user level: root/userID/g1 → go to user
+      currentCenterId = props.user.id
+      currentCenterPath = 'root'
+      parentGalaxyId = null
+    } else {
+      // Parent is another galaxy: root/userID/g1/g2 → go to g1
+      currentCenterId = parentId
+      currentCenterPath = parentPath
+      // Set grandparent
+      const grandparentParts = parentPath.split('/')
+      parentGalaxyId = grandparentParts.length >= 3 ? grandparentParts[grandparentParts.length - 1] : props.user.id
+    }
+  }
+
+  await loadNodes(true)
+}
+
+// Build breadcrumb trail from the actual path
+async function buildBreadcrumbs() {
+  const crumbs = [{ id: props.user.id, name: props.user.username, parentId: null }]
+
+  if (currentCenterId !== props.user.id) {
+    // path is like "root/userID/g1/g2/g3"
+    const pathParts = currentCenterPath.split('/')
+    // Segments after "root" and userID are galaxy IDs
+    const galaxyIds = pathParts.slice(2)
+
+    let prevId = props.user.id
+    for (const gid of galaxyIds) {
+      // Try to find the name from graph nodes, otherwise fetch from backend
+      const existingNode = graphNodes.find(n => n.id === gid)
+      let name = existingNode ? existingNode.name : null
+      if (!name) {
+        try {
+          const nodeInfo = await GetUserInfo(gid)
+          name = nodeInfo.name || gid
+        } catch (e) {
+          name = gid
+        }
+      }
+      crumbs.push({ id: gid, name, parentId: prevId })
+      prevId = gid
+    }
+
+    // Add current center if not already in crumbs
+    if (!crumbs.find(c => c.id === currentCenterId)) {
+      crumbs.push({ id: currentCenterId, name: currentCenterName, parentId: prevId })
+    }
+  }
+
+  breadcrumbs.value = crumbs
 }
 
 function handleResize() {
@@ -470,6 +838,16 @@ function handleResize() {
     .style('height', height + 'px')
   ctx = canvas.node().getContext('2d')
   ctx.scale(devicePixelRatio, devicePixelRatio)
+
+  // Recenter the center node
+  const center = graphNodes.find(n => n.id === currentCenterId)
+  if (center) {
+    center.x = width / 2
+    center.y = height / 2
+    center.fx = width / 2
+    center.fy = height / 2
+  }
+
   simulation.force('x', d3.forceX(width / 2).strength(0.05))
   simulation.force('y', d3.forceY(height / 2).strength(0.05))
   simulation.alpha(0.1).restart()
@@ -493,6 +871,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   if (simulation) simulation.stop()
+  if (clickTimer) clearTimeout(clickTimer)
   window.removeEventListener('resize', handleResize)
   window.removeEventListener('click', closeContextMenu)
   window.removeEventListener('keydown', handleKeydown)
@@ -510,41 +889,117 @@ watch(() => props.config, () => {
 <template>
   <div class="galaxy-container">
     <header class="galaxy-header">
-      <button class="back-btn" @click="$emit('back')">
+      <button class="back-btn" @click="goBack">
         <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
           <path d="M9 2L4 7L9 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
-        <span>返回主页</span>
+        <span v-if="currentCenterId === props.user.id">返回主页</span>
       </button>
       <div class="header-info">
-        <span class="node-count" v-if="!loading">{{ nodes.length }} 个节点</span>
+        <span class="node-count" v-if="!loading">{{ nodes.length + 1 }} 个节点</span>
       </div>
       <div class="header-spacer"></div>
     </header>
 
-    <div class="galaxy-canvas" ref="canvasRef">
-      <!-- Loading and empty states are rendered by the canvas itself -->
-    </div>
+    <!-- Breadcrumb -->
+    <nav class="breadcrumb-nav" v-if="breadcrumbs.length > 1">
+      <template v-for="(crumb, idx) in breadcrumbs" :key="crumb.id">
+        <span
+          v-if="idx > 0"
+          class="breadcrumb-sep"
+        >/</span>
+        <span
+          class="breadcrumb-item"
+          :class="{ active: crumb.id === currentCenterId }"
+          @click="crumb.id !== currentCenterId && enterGalaxy(crumb.id, crumb.name)"
+        >{{ crumb.name }}</span>
+      </template>
+    </nav>
+
+    <div class="galaxy-canvas" ref="canvasRef"></div>
+
     <div v-if="loading" class="loading-overlay">
       <div class="loading-spinner"></div>
       <span>正在加载星系...</span>
     </div>
-    <div v-else-if="nodes.length === 0" class="empty-state">
+
+    <div v-else-if="nodes.length === 0 && currentCenterId === props.user.id" class="empty-state">
       <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
         <circle cx="24" cy="24" r="20" stroke="rgba(255,255,255,0.15)" stroke-width="1.5"/>
         <path d="M24 12l6 3.5v7L24 26l-6-3.5v-7L24 12z" fill="rgba(99,102,241,0.1)" stroke="rgba(99,102,241,0.4)" stroke-width="1"/>
       </svg>
-      <p>星系还是空的</p>
+      <p>{{ currentCenterId === props.user.id ? '星系还是空的' : '这个星系还是空的' }}</p>
       <span>点击右下角 + 创建第一个节点</span>
     </div>
 
-    <!-- Context menu - positioned in galaxy-container for correct coordinates -->
+    <!-- Profile Card -->
+    <Transition name="fade">
+      <div v-if="showProfile" class="profile-overlay" @click.self="closeProfile">
+        <div class="profile-card glass-panel">
+          <button class="profile-close" @click="closeProfile">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <path d="M10 4L4 10M4 4l6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+          </button>
+          <div class="profile-header">
+            <div class="profile-avatar" :class="{ 'has-avatar': profileData.avatar }">
+              <img v-if="profileData.avatar" :src="profileData.avatar" alt="avatar" />
+              <span v-else>{{ (props.user.username || '?').charAt(0).toUpperCase() }}</span>
+            </div>
+            <div class="profile-name">{{ profileData.user?.name || props.user.username }}</div>
+            <div class="profile-motto">{{ profileData.user?.others?.motto || '' }}</div>
+          </div>
+          <div class="profile-stats">
+            <div class="stat-item">
+              <div class="stat-value">{{ profileData.noteCount }}</div>
+              <div class="stat-label">笔记</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-value">{{ profileData.galaxyCount }}</div>
+              <div class="stat-label">星系</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-value">{{ profileData.tagCount }}</div>
+              <div class="stat-label">标签</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
+    <!-- Rename Modal -->
+    <Transition name="fade">
+      <div v-if="showRename" class="profile-overlay" @click.self="showRename = false">
+        <div class="rename-modal glass-panel">
+          <h3>重命名星系</h3>
+          <input
+            v-model="renameInput"
+            class="rename-input"
+            placeholder="输入新名称"
+            @keydown.enter="confirmRename"
+            autofocus
+          />
+          <div class="rename-actions">
+            <button class="rename-cancel" @click="showRename = false">取消</button>
+            <button class="rename-confirm" @click="confirmRename">确认</button>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
+    <!-- Context Menu -->
     <Transition name="fade">
       <div
         v-if="contextMenu.show"
         class="context-menu"
         :style="{ left: contextMenu.x + 'px', top: contextMenu.y + 'px' }"
       >
+        <div v-if="contextMenu.node?.type === 'galaxy'" class="context-item" @click.stop="openRenameModal">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <path d="M8.5 2.5l3 3M2 9l5.5-5.5 3 3L5 12H2V9z" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <span>重命名</span>
+        </div>
         <div class="context-item danger" @click.stop="deleteContextNode">
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
             <path d="M2 3.5h10M5 3.5V2.5a.5.5 0 01.5-.5h3a.5.5 0 01.5.5v1M11 3.5v8a.5.5 0 01-.5.5H3.5a.5.5 0 01-.5-.5v-8" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
@@ -557,14 +1012,14 @@ watch(() => props.config, () => {
     <footer class="create-area">
       <Transition name="fade">
         <div v-if="showCreateMenu" class="create-menu" @click.stop>
-          <div class="create-option" @click="createNode('galaxy')">
+          <div class="create-option cursor-pointer" @click="createNode('galaxy')">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
               <circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.2"/>
               <circle cx="8" cy="8" r="2" fill="currentColor"/>
             </svg>
             <span>创建星系</span>
           </div>
-          <div class="create-option" @click="createNode('note')">
+          <div class="create-option cursor-pointer" @click="createNode('note')">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
               <rect x="3" y="2" width="10" height="12" rx="1" stroke="currentColor" stroke-width="1.2"/>
               <line x1="5" y1="6" x2="11" y2="6" stroke="currentColor" stroke-width="1"/>
@@ -607,6 +1062,8 @@ watch(() => props.config, () => {
 .galaxy-canvas :deep(canvas) {
   display: block;
 }
+
+.cursor-pointer { cursor: pointer; }
 
 /* Header */
 .galaxy-header {
@@ -657,6 +1114,46 @@ watch(() => props.config, () => {
 
 .header-spacer { flex: 1; }
 
+/* Breadcrumb */
+.breadcrumb-nav {
+  position: absolute;
+  top: 64px;
+  left: 32px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: 6px;
+  padding: 6px 12px;
+  backdrop-filter: blur(12px);
+}
+
+.breadcrumb-item {
+  cursor: pointer;
+  transition: color 0.2s;
+  padding: 2px 4px;
+  border-radius: 3px;
+}
+
+.breadcrumb-item:hover {
+  color: var(--text-primary);
+}
+
+.breadcrumb-item.active {
+  color: var(--accent);
+  font-weight: 500;
+  cursor: default;
+}
+
+.breadcrumb-sep {
+  color: var(--glass-border);
+  user-select: none;
+}
+
 /* Loading & Empty states */
 .loading-overlay, .empty-state {
   position: absolute;
@@ -692,6 +1189,188 @@ watch(() => props.config, () => {
 
 .empty-state span {
   font-size: 12px;
+}
+
+/* Profile Card */
+.profile-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(4px);
+}
+
+.profile-card {
+  width: 280px;
+  padding: 28px 24px;
+  border-radius: 12px;
+  position: relative;
+  text-align: center;
+}
+
+.profile-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: background 0.15s, color 0.15s;
+}
+
+.profile-close:hover {
+  background: rgba(255,255,255,0.08);
+  color: var(--text-primary);
+}
+
+.profile-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.profile-avatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: var(--bg-app);
+}
+
+.profile-avatar.has-avatar {
+  border-color: var(--glass-border);
+}
+
+.profile-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.profile-avatar span {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.profile-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.profile-motto {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.profile-stats {
+  display: flex;
+  justify-content: center;
+  gap: 24px;
+  padding-top: 16px;
+  border-top: 1px solid var(--glass-border);
+}
+
+.stat-item {
+  text-align: center;
+}
+
+.stat-value {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.stat-label {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+/* Rename Modal */
+.rename-modal {
+  width: 300px;
+  padding: 24px;
+  border-radius: 12px;
+}
+
+.rename-modal h3 {
+  margin: 0 0 16px 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.rename-input {
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--bg-app);
+  border: 1px solid var(--glass-border);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: var(--font-body, 'DM Sans', sans-serif);
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.rename-input:focus {
+  border-color: var(--accent);
+}
+
+.rename-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.rename-cancel, .rename-confirm {
+  padding: 7px 16px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid var(--glass-border);
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.rename-cancel {
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+.rename-cancel:hover {
+  background: rgba(255,255,255,0.05);
+  color: var(--text-primary);
+}
+
+.rename-confirm {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+
+.rename-confirm:hover {
+  opacity: 0.9;
 }
 
 /* Create Area */
