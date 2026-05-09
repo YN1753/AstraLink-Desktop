@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, watch, onMounted, onUnmounted } from 'vue'
 
 const props = defineProps(['user', 'config', 'themes'])
 const emit = defineEmits(['close', 'update-user', 'update-config', 'update-avatar'])
@@ -8,7 +8,15 @@ const editedUser = ref({ ...props.user })
 const activeTab = ref('profile')
 const contentRef = ref(null)
 
-const fonts = ['Inter', 'Sarasa Fixed SC', 'JetBrains Mono', 'EB Garamond']
+const sectionRefs = {}
+let observer = null
+
+const fonts = [
+  { id: 'DM Sans', name: 'DM Sans', desc: '现代无衬线' },
+  { id: 'LXGW WenKai', name: 'LXGW WenKai', desc: '霞鹜文楷' },
+  { id: 'Noto Serif SC', name: 'Noto Serif SC', desc: '思源宋体' },
+  { id: 'JetBrains Mono', name: 'JetBrains Mono', desc: '等宽代码' }
+]
 
 const tabs = [
   { id: 'profile', name: '个人资料', icon: 'user' },
@@ -38,12 +46,37 @@ function onAvatarSelected(event) {
   reader.readAsDataURL(file)
 }
 
+function setSectionRef(tabId, el) {
+  if (el) sectionRefs[tabId] = el
+}
+
 function selectTab(tabId) {
   activeTab.value = tabId
-  if (contentRef.value) {
-    contentRef.value.scrollTop = 0
+  const el = sectionRefs[tabId]
+  if (el) {
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 }
+
+onMounted(() => {
+  const container = contentRef.value
+  if (!container) return
+  observer = new IntersectionObserver((entries) => {
+    for (const entry of entries) {
+      if (entry.isIntersecting && entry.intersectionRatio >= 0.3) {
+        const id = entry.target.dataset.section
+        if (id) activeTab.value = id
+      }
+    }
+  }, { root: container, threshold: 0.3 })
+  for (const el of Object.values(sectionRefs)) {
+    observer.observe(el)
+  }
+})
+
+onUnmounted(() => {
+  if (observer) observer.disconnect()
+})
 
 function selectTheme(themeId) {
   emit('update-config', { ...props.config, theme: themeId })
@@ -119,7 +152,7 @@ const showProfileModal = ref(false)
       <!-- Content -->
       <main class="settings-content" ref="contentRef">
         <!-- Profile -->
-        <div v-show="activeTab === 'profile'" class="page">
+        <div :ref="el => setSectionRef('profile', el)" data-section="profile" class="page">
           <div class="page-header">
             <h2 class="page-title">个人资料</h2>
             <p class="page-desc">管理你的个人信息和头像</p>
@@ -156,7 +189,7 @@ const showProfileModal = ref(false)
         </div>
 
         <!-- Appearance -->
-        <div v-show="activeTab === 'appearance'" class="page">
+        <div :ref="el => setSectionRef('appearance', el)" data-section="appearance" class="page">
           <div class="page-header">
             <h2 class="page-title">外观定制</h2>
             <p class="page-desc">自定义应用的外观和字体</p>
@@ -192,19 +225,22 @@ const showProfileModal = ref(false)
             <div class="font-grid">
               <button
                 v-for="f in fonts"
-                :key="f"
-                :class="['font-card', { active: config.font === f }]"
-                @click="selectFont(f)"
+                :key="f.id"
+                :class="['font-card', { active: config.font === f.id }]"
+                @click="selectFont(f.id)"
               >
-                <span class="font-preview" :style="{ fontFamily: f }">Aa</span>
-                <span class="font-name">{{ f }}</span>
+                <span class="font-preview" :style="{ fontFamily: f.id }">Aa</span>
+                <div class="font-info">
+                  <span class="font-name">{{ f.name }}</span>
+                  <span class="font-desc">{{ f.desc }}</span>
+                </div>
               </button>
             </div>
           </div>
         </div>
 
         <!-- Galaxy -->
-        <div v-show="activeTab === 'galaxy'" class="page">
+        <div :ref="el => setSectionRef('galaxy', el)" data-section="galaxy" class="page">
           <div class="page-header">
             <h2 class="page-title">星系设置</h2>
             <p class="page-desc">自定义星系图的节点和连线外观</p>
@@ -268,7 +304,7 @@ const showProfileModal = ref(false)
         </div>
 
         <!-- About -->
-        <div v-show="activeTab === 'about'" class="page">
+        <div :ref="el => setSectionRef('about', el)" data-section="about" class="page">
           <div class="page-header">
             <h2 class="page-title">关于项目</h2>
             <p class="page-desc">了解 AstraLink 的更多信息</p>
@@ -525,6 +561,7 @@ const showProfileModal = ref(false)
   flex: 1;
   overflow-y: auto;
   background: var(--glass-bg);
+  scroll-behavior: smooth;
 }
 
 .settings-content::-webkit-scrollbar {
@@ -542,6 +579,15 @@ const showProfileModal = ref(false)
 
 .page {
   padding: clamp(20px, 4vw, 36px) clamp(24px, 5vw, 40px);
+  scroll-margin-top: 0;
+}
+
+.page + .page {
+  border-top: 1px solid var(--glass-border);
+}
+
+.page:last-child {
+  padding-bottom: clamp(32px, 6vw, 56px);
 }
 
 .page-header {
@@ -820,11 +866,26 @@ const showProfileModal = ref(false)
   color: var(--text-primary);
   width: 40px;
   text-align: center;
+  flex-shrink: 0;
+}
+
+.font-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
 }
 
 .font-name {
   font-size: 13px;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.font-desc {
+  font-size: 11px;
   color: var(--text-secondary);
+  opacity: 0.7;
 }
 
 /* About */

@@ -72,8 +72,16 @@ function applyTheme(themeId) {
   localStorage.setItem('theme', themeId)
 }
 
+const fontStacks = {
+  'LXGW WenKai': "'LXGW WenKai', serif",
+  'DM Sans': "'DM Sans', sans-serif",
+  'Noto Serif SC': "'Noto Serif SC', serif",
+  'JetBrains Mono': "'JetBrains Mono', monospace"
+}
+
 function applyFont(fontId) {
-  document.body.style.fontFamily = `'${fontId}', sans-serif`
+  const stack = fontStacks[fontId] || `'${fontId}', sans-serif`
+  document.documentElement.style.setProperty('--font-body', stack)
   localStorage.setItem('font', fontId)
 }
 
@@ -349,8 +357,11 @@ onUnmounted(() => {
 </template>
 
 <style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&family=LXGW+WenKai:wght@300;400;700&family=Noto+Serif+SC:wght@300;400;600;700&display=swap');
+
 :root {
   --transition-speed: 0.35s;
+  --font-body: 'DM Sans', sans-serif;
   --bg-app: #050505;
   --glass-bg: rgba(15, 15, 15, 0.75);
   --glass-border: rgba(255, 255, 255, 0.08);
@@ -433,7 +444,7 @@ onUnmounted(() => {
 
 body {
   margin: 0;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: var(--font-body, 'DM Sans', sans-serif);
   overflow: hidden;
   background: var(--bg-app);
   color: var(--text-primary);

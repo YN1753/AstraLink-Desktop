@@ -39,28 +39,23 @@ function getThemeColors() {
   const textSecondary = style.getPropertyValue('--text-secondary').trim() || '#94a3b8'
   const bgApp = style.getPropertyValue('--bg-app').trim() || '#050505'
 
-  // Derive node colors from accent
   return {
     user: {
       fill: bgApp,
       stroke: accent,
-      glow: accent + '40', // 25% opacity
       label: textPrimary
     },
     galaxy: {
-      fill: bgApp,
+      fill: accent + '18',
       stroke: accent,
-      glow: accent + '30',
-      label: textSecondary
+      label: textPrimary
     },
     note: {
-      fill: bgApp,
-      stroke: accent,
-      glow: accent + '25',
+      fill: accent + '10',
+      stroke: accent + 'aa',
       label: textSecondary
     },
-    link: textPrimary + '14', // ~8% opacity
-    linkHover: textPrimary + '30',
+    link: textPrimary + '14',
     textPrimary,
     textSecondary,
     accent
@@ -271,6 +266,7 @@ function handleMouseMove(event) {
 function render() {
   if (!ctx) return
   const colors = getThemeColors()
+  const bodyFont = getComputedStyle(document.documentElement).getPropertyValue('--font-body').trim() || "'DM Sans', sans-serif"
 
   ctx.save()
   ctx.clearRect(0, 0, width, height)
@@ -303,28 +299,16 @@ function render() {
     const typeColors = colors[n.type] || colors.note
     const r = n.radius
 
-    // Glow on hover
-    if (isHovered) {
-      ctx.beginPath()
-      ctx.arc(n.x, n.y, r + 14, 0, Math.PI * 2)
-      const gradient = ctx.createRadialGradient(n.x, n.y, r, n.x, n.y, r + 14)
-      gradient.addColorStop(0, typeColors.glow)
-      gradient.addColorStop(1, 'transparent')
-      ctx.fillStyle = gradient
-      ctx.fill()
-    }
-
-    // Node circle
-    ctx.beginPath()
-    ctx.arc(n.x, n.y, r, 0, Math.PI * 2)
-    ctx.fillStyle = typeColors.fill
-    ctx.fill()
-    ctx.strokeStyle = isHovered ? colors.textPrimary : typeColors.stroke
-    ctx.lineWidth = isHovered ? 2.5 : 1.5
-    ctx.stroke()
-
-    // User node: avatar or fallback icon
+    // User node: unchanged
     if (n.type === 'user') {
+      ctx.beginPath()
+      ctx.arc(n.x, n.y, r, 0, Math.PI * 2)
+      ctx.fillStyle = typeColors.fill
+      ctx.fill()
+      ctx.strokeStyle = isHovered ? colors.textPrimary : typeColors.stroke
+      ctx.lineWidth = isHovered ? 2.5 : 1.5
+      ctx.stroke()
+
       if (avatarImg) {
         ctx.save()
         ctx.beginPath()
@@ -332,14 +316,12 @@ function render() {
         ctx.clip()
         ctx.drawImage(avatarImg, n.x - r + 2, n.y - r + 2, (r - 2) * 2, (r - 2) * 2)
         ctx.restore()
-        // Redraw border on top
         ctx.beginPath()
         ctx.arc(n.x, n.y, r - 2, 0, Math.PI * 2)
         ctx.strokeStyle = isHovered ? colors.textPrimary : typeColors.stroke
         ctx.lineWidth = isHovered ? 2.5 : 1.5
         ctx.stroke()
       } else {
-        // Fallback: head + shoulders icon
         ctx.strokeStyle = typeColors.stroke
         ctx.lineWidth = 1.5
         ctx.beginPath()
@@ -351,31 +333,54 @@ function render() {
       }
     }
 
-    // Galaxy: inner ring
+    // Galaxy: flat circle + single inner ring + center dot
     if (n.type === 'galaxy') {
       ctx.beginPath()
-      ctx.arc(n.x, n.y, r * 0.55, 0, Math.PI * 2)
-      ctx.strokeStyle = typeColors.stroke
-      ctx.lineWidth = 0.8
-      ctx.globalAlpha = 0.5
+      ctx.arc(n.x, n.y, r, 0, Math.PI * 2)
+      ctx.fillStyle = typeColors.fill
+      ctx.fill()
+      ctx.strokeStyle = isHovered ? colors.accent : typeColors.stroke
+      ctx.lineWidth = 1.5
       ctx.stroke()
-      ctx.globalAlpha = 1
+
+      // Inner ring
+      ctx.beginPath()
+      ctx.arc(n.x, n.y, r * 0.5, 0, Math.PI * 2)
+      ctx.strokeStyle = typeColors.stroke + '55'
+      ctx.lineWidth = 1
+      ctx.stroke()
+
+      // Center dot
+      ctx.beginPath()
+      ctx.arc(n.x, n.y, 2, 0, Math.PI * 2)
+      ctx.fillStyle = colors.accent + '88'
+      ctx.fill()
     }
 
-    // Note: doc icon
+    // Note: flat circle + simple page icon
     if (n.type === 'note') {
-      const ix = n.x - 5
-      const iy = n.y - 6
-      ctx.strokeStyle = typeColors.stroke
-      ctx.lineWidth = 1
       ctx.beginPath()
-      ctx.rect(ix, iy, 10, 12)
+      ctx.arc(n.x, n.y, r, 0, Math.PI * 2)
+      ctx.fillStyle = typeColors.fill
+      ctx.fill()
+      ctx.strokeStyle = isHovered ? colors.accent : typeColors.stroke
+      ctx.lineWidth = 1.5
       ctx.stroke()
+
+      // Simple document icon
+      const s = r * 0.38
+      ctx.strokeStyle = isHovered ? colors.accent : colors.accent + '77'
+      ctx.lineWidth = 1.2
+      // Page outline
       ctx.beginPath()
-      ctx.moveTo(ix + 2, iy + 4)
-      ctx.lineTo(ix + 8, iy + 4)
-      ctx.moveTo(ix + 2, iy + 7)
-      ctx.lineTo(ix + 8, iy + 7)
+      ctx.rect(n.x - s, n.y - s * 1.2, s * 2, s * 2.4)
+      ctx.stroke()
+      // Two text lines
+      ctx.beginPath()
+      ctx.moveTo(n.x - s * 0.55, n.y - s * 0.3)
+      ctx.lineTo(n.x + s * 0.55, n.y - s * 0.3)
+      ctx.moveTo(n.x - s * 0.55, n.y + s * 0.3)
+      ctx.lineTo(n.x + s * 0.3, n.y + s * 0.3)
       ctx.stroke()
     }
 
@@ -383,7 +388,7 @@ function render() {
     const maxLen = n.type === 'user' ? 10 : 8
     const label = n.name.length > maxLen ? n.name.slice(0, maxLen) + '...' : n.name
     ctx.fillStyle = isHovered ? colors.textPrimary : typeColors.label
-    ctx.font = `${n.type === 'user' ? '600' : isHovered ? '600' : '500'} ${n.type === 'user' ? 12 : 11}px "SF Pro Display", "Helvetica Neue", sans-serif`
+    ctx.font = `${n.type === 'user' ? '600' : isHovered ? '600' : '500'} ${n.type === 'user' ? 12 : 11}px ${bodyFont}`
     ctx.textAlign = 'center'
     ctx.textBaseline = 'top'
     ctx.fillText(label, n.x, n.y + r + 6)
@@ -590,7 +595,7 @@ watch(() => props.config, () => {
   height: 100%;
   background: var(--bg-app);
   position: relative;
-  font-family: 'SF Pro Display', 'Helvetica Neue', 'Switzer', sans-serif;
+  font-family: var(--font-body, 'DM Sans', sans-serif);
 }
 
 .galaxy-canvas {
