@@ -30,6 +30,7 @@
     "force-graph": "^1.51.4",
     "naive-ui": "^2.44.1",
     "prismjs": "^1.30.0",
+    "qrcode": "^1.5.4",
     "vue": "^3.2.0"
   },
   "devDependencies": {

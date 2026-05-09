@@ -1,5 +1,6 @@
 <script setup>
 import { ref, watch, onMounted, onUnmounted } from 'vue'
+import QRCode from 'qrcode'
 
 const props = defineProps(['user', 'config', 'themes'])
 const emit = defineEmits(['close', 'update-user', 'update-config', 'update-avatar'])
@@ -23,7 +24,28 @@ const tabs = [
   { id: 'appearance', name: '外观定制', icon: 'palette' },
   { id: 'galaxy', name: '星系设置', icon: 'orbit' },
   { id: 'about', name: '关于', icon: 'info' },
+  { id: 'donate', name: '赞赏作者', icon: 'heart' },
 ]
+
+const showDonateModal = ref(false)
+const donateQrWx = ref('')
+const donateQrAlipay = ref('')
+
+async function generateDonateQr() {
+  const style = getComputedStyle(document.documentElement)
+  const accent = style.getPropertyValue('--accent').trim() || '#3b82f6'
+  const bg = style.getPropertyValue('--bg-app').trim() || '#050505'
+  try {
+    donateQrWx.value = await QRCode.toDataURL('wxp://f2f07HN77AF5DnnfXWofPd-3BAcybco-S-yaqxmPi6udHQs', {
+      width: 180, margin: 2, color: { dark: accent, light: bg }
+    })
+    donateQrAlipay.value = await QRCode.toDataURL('https://qr.alipay.com/2m615984gq3t4kgsifs70fc', {
+      width: 180, margin: 2, color: { dark: accent, light: bg }
+    })
+  } catch (e) {
+    console.error('QR generation failed:', e)
+  }
+}
 
 watch(() => props.user, (newUser) => {
   editedUser.value = { ...newUser }
@@ -136,6 +158,9 @@ const showProfileModal = ref(false)
             <svg v-else-if="tab.icon === 'info'" class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
               <circle cx="12" cy="12" r="9"/>
               <path d="M12 16v-4M12 8h.01"/>
+            </svg>
+            <svg v-else-if="tab.icon === 'heart'" class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/>
             </svg>
             <span class="tab-name">{{ tab.name }}</span>
             <svg v-if="activeTab === tab.id" class="tab-indicator" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -362,6 +387,29 @@ const showProfileModal = ref(false)
             </div>
           </div>
         </div>
+
+        <!-- Donate -->
+        <div :ref="el => setSectionRef('donate', el)" data-section="donate" class="page">
+          <div class="page-header">
+            <h2 class="page-title">赞赏作者</h2>
+            <p class="page-desc">如果 AstraLink 对你有帮助，欢迎请作者喝杯咖啡</p>
+          </div>
+
+          <button class="donate-card" @click="showDonateModal = true; generateDonateQr()">
+            <div class="donate-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/>
+              </svg>
+            </div>
+            <div class="donate-text">
+              <span class="donate-title">支持开发</span>
+              <span class="donate-desc">微信支付 / 支付宝</span>
+            </div>
+            <svg class="donate-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M9 18l6-6-6-6"/>
+            </svg>
+          </button>
+        </div>
       </main>
 
       <button class="close-btn" @click="$emit('close')">
@@ -423,6 +471,45 @@ const showProfileModal = ref(false)
             <div class="modal-footer">
               <button class="modal-btn cancel" @click="showProfileModal = false">取消</button>
               <button class="modal-btn save" @click="saveUser(); showProfileModal = false">保存</button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+
+      <!-- Donate modal -->
+      <Transition name="modal-fade">
+        <div v-if="showDonateModal" class="modal-overlay" @click.self="showDonateModal = false">
+          <div class="donate-modal">
+            <div class="modal-header">
+              <h3>赞赏作者</h3>
+              <button class="modal-close" @click="showDonateModal = false">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M18 6L6 18M6 6l12 12"/>
+                </svg>
+              </button>
+            </div>
+            <div class="donate-body">
+              <p class="donate-thanks">感谢你的支持，这将鼓励我持续改进 AstraLink</p>
+              <div class="donate-qr-grid">
+                <div class="donate-qr-card">
+                  <div class="qr-img-wrapper">
+                    <img v-if="donateQrWx" :src="donateQrWx" class="qr-img" alt="微信支付" />
+                    <div v-else class="qr-placeholder">
+                      <div class="qr-loading-spinner"></div>
+                    </div>
+                  </div>
+                  <span class="qr-label">微信支付</span>
+                </div>
+                <div class="donate-qr-card">
+                  <div class="qr-img-wrapper">
+                    <img v-if="donateQrAlipay" :src="donateQrAlipay" class="qr-img" alt="支付宝" />
+                    <div v-else class="qr-placeholder">
+                      <div class="qr-loading-spinner"></div>
+                    </div>
+                  </div>
+                  <span class="qr-label">支付宝</span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -1325,5 +1412,150 @@ textarea.form-input {
 .style-name {
   font-size: 13px;
   font-weight: 500;
+}
+
+/* Donate section */
+.donate-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px 24px;
+  background: rgba(var(--accent-rgb), 0.06);
+  border: 1px solid rgba(var(--accent-rgb), 0.2);
+  border-radius: 16px;
+  cursor: pointer;
+  width: 100%;
+  transition: all 0.2s ease;
+  font-family: inherit;
+  color: var(--text-primary);
+}
+
+.donate-card:hover {
+  background: rgba(var(--accent-rgb), 0.12);
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+
+.donate-icon {
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(var(--accent-rgb), 0.15);
+  border-radius: 12px;
+  flex-shrink: 0;
+}
+
+.donate-icon svg {
+  width: 22px;
+  height: 22px;
+  color: var(--accent);
+}
+
+.donate-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: left;
+}
+
+.donate-title {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.donate-desc {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.donate-arrow {
+  width: 18px;
+  height: 18px;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+/* Donate modal */
+.donate-modal {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: 20px;
+  width: min(420px, 90vw);
+  overflow: hidden;
+  animation: scaleIn 0.25s ease;
+}
+
+.donate-body {
+  padding: 28px 24px 32px;
+  text-align: center;
+}
+
+.donate-thanks {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 0 0 24px 0;
+  line-height: 1.6;
+}
+
+.donate-qr-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.donate-qr-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.qr-img-wrapper {
+  width: 160px;
+  height: 160px;
+  background: var(--bg-app);
+  border: 1px solid var(--glass-border);
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px;
+}
+
+.qr-img {
+  width: 100%;
+  height: 100%;
+  border-radius: 8px;
+  image-rendering: pixelated;
+}
+
+.qr-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.qr-loading-spinner {
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--glass-border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.qr-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
 }
 </style>
