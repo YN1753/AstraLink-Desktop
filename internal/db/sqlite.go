@@ -14,8 +14,8 @@ import (
 // --- 4. Init 数据库初始化函数 ---
 
 func InitDB(basePath string) (*gorm.DB, error) {
-	// 1. 构造数据库存储目录: {basePath}/data/db
-	dbDir := filepath.Join(basePath, "data", "db")
+	// 1. 构造数据库存储目录: {basePath}/db
+	dbDir := filepath.Join(basePath, "db")
 	dbName := "astralink.db"
 	dbPath := filepath.Join(dbDir, dbName)
 

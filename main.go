@@ -1,6 +1,7 @@
 package main
 
 import (
+	"astralink/pkg/utils"
 	"embed"
 	"log"
 	"os"
@@ -15,10 +16,10 @@ import (
 var assets embed.FS
 
 func main() {
-	basePath, _ := os.Getwd()
+	basePath := utils.GetAppStoragePath()
 
-	//  物理目录初始化
-	dirs := []string{"data/db", "data/notes", "data/avatar"}
+	// 物理目录初始化
+	dirs := []string{"db", "index", "notes", "avatar"}
 	for _, d := range dirs {
 		os.MkdirAll(filepath.Join(basePath, d), 0755)
 	}

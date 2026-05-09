@@ -41,22 +41,7 @@ func (b *BaseRepo) GetNodeById(id string) (model.Node, error) {
 	return node, err
 }
 func (b *BaseRepo) GetRootPath() string {
-	// 在开发模式（wails dev）下，我们通常希望数据就在项目根目录
-	// 你可以根据环境变量来切换，或者简单地判断是否在正式安装目录运行
-	// 这里演示标准做法：获取系统分配给本应用的配置目录
-	return "data"
-	//dir, err := os.UserConfigDir() // 获取 Roaming 或 Application Support 路径
-	//if err != nil {
-	//	return "data" // 降级方案：存本地
-	//}
-	//
-	//// 拼接应用名，建议叫 "AstraLink"
-	//appDataPath := filepath.Join(dir, "AstraLink")
-	//
-	//// 确保这个根目录存在
-	//_ = os.MkdirAll(appDataPath, 0755)
-	//
-	//return appDataPath
+	return b.BasePath
 }
 
 func (b *BaseRepo) SaveLocalFile(subDir string, file io.Reader, filename string) (string, error) {

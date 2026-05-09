@@ -8,7 +8,7 @@ import (
 )
 
 func BleveInit(path string) (bleve.Index, error) {
-	datapath := filepath.Join(path, "data", "index", "notes")
+	datapath := filepath.Join(path, "index", "notes")
 
 	// 确保目录存在
 	if err := os.MkdirAll(datapath, 0755); err != nil {
