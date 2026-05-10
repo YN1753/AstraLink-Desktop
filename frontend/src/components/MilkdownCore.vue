@@ -9,6 +9,9 @@ import { prism } from '@milkdown/plugin-prism'
 import { indent } from '@milkdown/plugin-indent'
 import { listener, listenerCtx } from '@milkdown/plugin-listener'
 import { clipboard } from '@milkdown/plugin-clipboard'
+import { $prose } from '@milkdown/utils'
+import { Plugin, PluginKey } from '@milkdown/prose/state'
+import { Slice, Fragment } from '@milkdown/prose/model'
 import { OnFileDrop, OnFileDropOff } from '../../wailsjs/runtime/runtime'
 import { TooltipProvider } from '@milkdown/plugin-tooltip'
 import { SlashProvider } from '@milkdown/plugin-slash'
@@ -18,7 +21,7 @@ import { SearchNotes, GetNoteContent, SaveAttachment, GetAttachmentPath, OpenURL
 
 import Prism from 'prismjs'
 window.Prism = Prism
-import 'prismjs/themes/prism-tomorrow.css'
+// PrismJS theme handled by custom CSS below (theme-adaptive via CSS variables)
 import 'prismjs/components/prism-go'
 import 'prismjs/components/prism-javascript'
 import 'prismjs/components/prism-typescript'
@@ -37,7 +40,6 @@ const props = defineProps(['modelValue', 'noteId'])
 const emit = defineEmits(['update:modelValue', 'open-note', 'show-link-picker'])
 
 let tooltipProvider = null
-let slashProvider = null
 let linkProvider = null
 let tooltipEl = null
 let slashEl = null
@@ -472,7 +474,7 @@ function executeSlashCommand(action) {
     if (!paraNode || paraNode.type.name !== 'paragraph') {
       dispatch(tr)
       view.focus()
-      if (slashProvider) slashProvider.hide()
+      if (slashEl) slashEl.dataset.show = 'false'
       return
     }
 
@@ -491,7 +493,7 @@ function executeSlashCommand(action) {
         break
       }
       case 'hr': {
-        const hrType = schema.nodes.horizontalRule || schema.nodes.horizontal_rule
+        const hrType = schema.nodes.hr
         if (hrType) {
           const hr = hrType.create()
           tr = tr.replaceWith(paraPos, paraPos + paraNode.nodeSize, hr)
@@ -522,7 +524,7 @@ function executeSlashCommand(action) {
       }
       case 'taskList': {
         const listType = schema.nodes.bullet_list
-        const itemType = schema.nodes.task_list_item || schema.nodes.taskListItem
+        const itemType = schema.nodes.list_item
         if (listType && itemType) {
           const para = schema.nodes.paragraph.create(null, textContent)
           const item = itemType.create({ checked: false }, para)
@@ -543,8 +545,10 @@ function executeSlashCommand(action) {
       case 'codeBlock': {
         const codeType = schema.nodes.code_block
         if (codeType) {
-          const code = codeType.create(null, schema.text(''))
-          tr = tr.replaceWith(paraPos, paraPos + paraNode.nodeSize, code)
+          const code = codeType.createAndFill()
+          if (code) {
+            tr = tr.replaceWith(paraPos, paraPos + paraNode.nodeSize, code)
+          }
         }
         break
       }
@@ -600,7 +604,7 @@ function executeSlashCommand(action) {
 
     dispatch(tr)
     view.focus()
-    if (slashProvider) slashProvider.hide()
+    if (slashEl) slashEl.dataset.show = 'false'
   })
 }
 
@@ -645,6 +649,22 @@ async function uploadSingleFile(file, schema) {
   return null
 }
 
+// Plugin: ensure there's always an empty paragraph at the end if the last node is a code block
+const trailingParagraphKey = new PluginKey('trailing-paragraph')
+const trailingParagraphPlugin = $prose((ctx) => {
+  return new Plugin({
+    key: trailingParagraphKey,
+    appendTransaction: (_transactions, oldState, newState) => {
+      const lastNode = newState.doc.lastChild
+      if (!lastNode || lastNode.type.name === 'paragraph') return null
+      // Last node is a code block (or other non-paragraph) — append an empty paragraph
+      const paragraph = newState.schema.nodes.paragraph.create()
+      const tr = newState.tr.insert(newState.doc.content.size, paragraph)
+      return tr
+    },
+  })
+})
+
 const { get } = useEditor((root) => {
   return Editor.make()
       .config((ctx) => {
@@ -662,6 +682,7 @@ const { get } = useEditor((root) => {
       .use(indent)
       .use(listener)
       .use(clipboard)
+      .use(trailingParagraphPlugin)
 }, [])
 
 onMounted(() => {
@@ -673,7 +694,6 @@ onMounted(() => {
   document.body.appendChild(linkEl)
 
   tooltipProvider = new TooltipProvider({ content: tooltipEl, debounce: 50 })
-  slashProvider = new SlashProvider({ content: slashEl, debounce: 0, trigger: '/' })
   linkProvider = new SlashProvider({ content: linkEl, debounce: 0, offset: 8 })
 
   linkEl.addEventListener('input', handleLinkInput)
@@ -775,8 +795,28 @@ onMounted(() => {
             lastSelection = null
           }
         }
-        if (view && slashProvider) {
-          slashProvider.update(view)
+        if (view && slashEl) {
+          const { $from } = view.state.selection
+          const lineTextBefore = $from.parent.textBetween(0, $from.parentOffset)
+          const isSlash = lineTextBefore === '/' || lineTextBefore.endsWith(' /')
+          if (isSlash) {
+            try {
+              const coords = view.coordsAtPos($from.pos)
+              const dropdownH = 320
+              const spaceBelow = window.innerHeight - coords.bottom
+              slashEl.style.left = coords.left + 'px'
+              if (spaceBelow < dropdownH) {
+                slashEl.style.top = (coords.top - dropdownH - 4) + 'px'
+              } else {
+                slashEl.style.top = (coords.bottom + 4) + 'px'
+              }
+              slashEl.dataset.show = 'true'
+            } catch (e) {
+              slashEl.dataset.show = 'false'
+            }
+          } else {
+            slashEl.dataset.show = 'false'
+          }
         }
         if (view) {
           const { $from } = view.state.selection
@@ -800,7 +840,6 @@ onUnmounted(() => {
   if (pollTimer) clearInterval(pollTimer)
   if (hoverTimeout) clearTimeout(hoverTimeout)
   if (tooltipProvider) tooltipProvider.destroy()
-  if (slashProvider) slashProvider.destroy()
   if (linkProvider) linkProvider.destroy()
   if (tooltipEl?.parentNode) tooltipEl.parentNode.removeChild(tooltipEl)
   if (slashEl?.parentNode) slashEl.parentNode.removeChild(slashEl)
@@ -1106,8 +1145,9 @@ onUnmounted(() => {
 /* Horizontal rule */
 :deep(.ProseMirror hr) {
   border: none;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, var(--glass-border), transparent);
+  height: 2px;
+  background: linear-gradient(90deg, transparent 0%, var(--text-secondary) 15%, var(--text-secondary) 85%, transparent 100%);
+  opacity: 0.4;
   margin: clamp(20px, 4vw, 32px) 0;
 }
 
@@ -1162,35 +1202,96 @@ onUnmounted(() => {
   cursor: pointer;
 }
 
-/* Code blocks */
+/* Code blocks — Typora style */
 :deep(.ProseMirror pre) {
-  background: var(--glass-bg) !important;
-  border: 1px solid var(--glass-border);
-  border-radius: 12px;
-  padding: clamp(14px, 2.5vw, 20px);
+  background: rgba(128, 128, 128, 0.12);
+  border: 1px solid rgba(128, 128, 128, 0.2);
+  border-radius: 8px;
+  padding: 0;
   margin: clamp(14px, 2.5vw, 20px) 0;
-  overflow-x: auto;
+  overflow: hidden;
   position: relative;
 }
 
-:deep(.ProseMirror pre)::before {
-  content: '';
+/* Language label */
+:deep(.ProseMirror pre[data-language]::before) {
+  content: attr(data-language);
   position: absolute;
   top: 0;
-  left: 0;
   right: 0;
-  height: 3px;
-  background: linear-gradient(90deg, var(--accent), rgba(var(--accent-rgb), 0.3), transparent);
-  border-radius: 12px 12px 0 0;
+  padding: 4px 12px;
+  font-size: 11px;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  color: var(--text-secondary);
+  opacity: 0.6;
+  background: rgba(128, 128, 128, 0.1);
+  border-bottom-left-radius: 6px;
+  pointer-events: none;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 :deep(.ProseMirror pre code) {
+  display: block;
   background: transparent;
   color: var(--text-primary);
-  padding: 0;
+  padding: clamp(14px, 2.5vw, 20px);
+  padding-top: clamp(18px, 2.5vw, 24px);
   font-size: clamp(12px, 1.5vw, 14px);
   font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
-  line-height: 1.6;
+  line-height: 1.7;
+}
+
+/* Theme-adaptive syntax highlighting via PrismJS */
+:deep(.ProseMirror pre .token.comment),
+:deep(.ProseMirror pre .token.prolog),
+:deep(.ProseMirror pre .token.doctype),
+:deep(.ProseMirror pre .token.cdata) {
+  color: var(--text-secondary);
+  opacity: 0.6;
+  font-style: italic;
+}
+
+:deep(.ProseMirror pre .token.keyword),
+:deep(.ProseMirror pre .token.tag),
+:deep(.ProseMirror pre .token.boolean),
+:deep(.ProseMirror pre .token.important) {
+  color: var(--accent);
+}
+
+:deep(.ProseMirror pre .token.string),
+:deep(.ProseMirror pre .token.char),
+:deep(.ProseMirror pre .token.template-string),
+:deep(.ProseMirror pre .token.attr-value) {
+  color: #a3e635;
+}
+
+:deep(.ProseMirror pre .token.number),
+:deep(.ProseMirror pre .token.variable),
+:deep(.ProseMirror pre .token.constant) {
+  color: #fbbf24;
+}
+
+:deep(.ProseMirror pre .token.function),
+:deep(.ProseMirror pre .token.class-name),
+:deep(.ProseMirror pre .token.method) {
+  color: #60a5fa;
+}
+
+:deep(.ProseMirror pre .token.operator),
+:deep(.ProseMirror pre .token.punctuation),
+:deep(.ProseMirror pre .token.bracket) {
+  color: var(--text-secondary);
+}
+
+:deep(.ProseMirror pre .token.property),
+:deep(.ProseMirror pre .token.attr-name) {
+  color: #c084fc;
+}
+
+:deep(.ProseMirror pre .token.regex),
+:deep(.ProseMirror pre .token.important) {
+  color: #f472b6;
 }
 
 /* Tables */
