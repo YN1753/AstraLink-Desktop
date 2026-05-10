@@ -773,10 +773,62 @@ const trailingParagraphPlugin = $prose((ctx) => {
     appendTransaction: (_transactions, oldState, newState) => {
       const lastNode = newState.doc.lastChild
       if (!lastNode || lastNode.type.name === 'paragraph') return null
-      // Last node is a code block (or other non-paragraph) — append an empty paragraph
       const paragraph = newState.schema.nodes.paragraph.create()
       const tr = newState.tr.insert(newState.doc.content.size, paragraph)
       return tr
+    },
+  })
+})
+
+// Auto-indent in code blocks: preserve indentation on Enter
+const autoIndentKey = new PluginKey('auto-indent')
+const autoIndentPlugin = $prose(() => {
+  return new Plugin({
+    key: autoIndentKey,
+    props: {
+      handleKeyDown(view, event) {
+        if (event.key !== 'Enter') return false
+        const { $from } = view.state.selection
+        if ($from.parent.type.name !== 'code_block') return false
+
+        const textBefore = $from.parent.textContent.slice(0, $from.parentOffset)
+        const lastLine = textBefore.split('\n').pop() || ''
+        const indent = lastLine.match(/^(\s*)/)[1]
+
+        const tr = view.state.tr.insertText('\n' + indent)
+        view.dispatch(tr)
+        return true
+      },
+    },
+  })
+})
+
+// Auto-close brackets and quotes in code blocks
+const bracketMatchKey = new PluginKey('bracket-match')
+const bracketMatchPlugin = $prose(() => {
+  const pairs = { '(': ')', '{': '}', '[': ']', '"': '"', "'": "'", '`': '`' }
+  return new Plugin({
+    key: bracketMatchKey,
+    props: {
+      handleTextInput(view, from, to, text) {
+        const { $from } = view.state.selection
+        if ($from.parent.type.name !== 'code_block') return false
+
+        const closing = pairs[text]
+        if (!closing) return false
+
+        // Don't auto-close quotes if previous char is alphanumeric
+        if (text === '"' || text === "'" || text === '`') {
+          const prevChar = $from.parent.textContent[$from.parentOffset - 1]
+          if (prevChar && /\w/.test(prevChar)) return false
+        }
+
+        const tr = view.state.tr.insertText(text + closing, from, to)
+        // Place cursor between the pair
+        const newPos = from + 1
+        view.dispatch(tr.setSelection(view.state.selection.constructor.near(tr.doc.resolve(newPos))))
+        return true
+      },
     },
   })
 })
@@ -799,6 +851,8 @@ const { get } = useEditor((root) => {
       .use(listener)
       .use(clipboard)
       .use(trailingParagraphPlugin)
+      .use(autoIndentPlugin)
+      .use(bracketMatchPlugin)
 }, [])
 
 onMounted(() => {
