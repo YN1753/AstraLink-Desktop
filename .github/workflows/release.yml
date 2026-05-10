@@ -30,48 +30,48 @@ jobs:
         run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
 
       - name: Install NSIS
-        shell: bash
-        run: choco install nsis -y
+        shell: pwsh
+        run: |
+          choco install nsis -y
+          Write-Host "NSIS path:"
+          where.exe makensis 2>&1 || Write-Host "makensis not in PATH"
 
       - name: Get version from tag
         id: version
         shell: bash
         run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
 
-      # 1. 构建便携版 (Portable)
-      - name: Build portable exe
-        run: wails build -ldflags "-X main.AppVersion=${{ steps.version.outputs.VERSION }}"
-
-      - name: Prepare portable package
-        shell: pwsh
-        run: |
-          Rename-Item "build/bin/AstraLink.exe" "AstraLink-${{ steps.version.outputs.VERSION }}-windows-portable.exe"
-          New-Item -Path "build/bin/.portable" -ItemType "file"
-          Compress-Archive -Path `
-            "build/bin/AstraLink-${{ steps.version.outputs.VERSION }}-windows-portable.exe", `
-            "build/bin/.portable" `
-            -DestinationPath "AstraLink-${{ steps.version.outputs.VERSION }}-windows-portable.zip"
-
-      # 2. 构建 NSIS 安装版 (Setup)
+      # 构建 NSIS 安装版（同时产出应用 exe 和安装程序 exe）
       - name: Build NSIS installer
-        shell: bash
-        run: |
-          wails build -nsis -ldflags "-X main.AppVersion=${{ steps.version.outputs.VERSION }}"
-          echo "--- build/bin contents ---"
-          ls -la build/bin/
+        run: wails build -nsis -ldflags "-X main.AppVersion=${{ steps.version.outputs.VERSION }}"
 
-      - name: Rename installer
+      - name: Package artifacts
         shell: pwsh
         run: |
+          $ver = "${{ steps.version.outputs.VERSION }}"
           Write-Host "--- build/bin contents ---"
           Get-ChildItem build/bin/ | Format-Table Name, Length
+
+          # 安装程序：找 *-installer.exe 并重命名
           $installer = Get-ChildItem "build/bin/*-installer.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
-          if ($installer) {
-            Move-Item $installer.FullName "AstraLink-${{ steps.version.outputs.VERSION }}-windows-setup.exe"
-            Write-Host "Renamed: $($installer.Name) -> AstraLink-${{ steps.version.outputs.VERSION }}-windows-setup.exe"
-          } else {
-            Write-Error "NSIS installer not found in build/bin/"
+          if (-not $installer) {
+            Write-Error "NSIS installer not found! Files in build/bin:"
+            Get-ChildItem build/bin/
             exit 1
+          }
+          $setupName = "AstraLink-$ver-windows-setup.exe"
+          Move-Item $installer.FullName $setupName
+          Write-Host "Setup: $($installer.Name) -> $setupName"
+
+          # 便携版：用 AstraLink.exe 打包
+          $app = "build/bin/AstraLink.exe"
+          if (Test-Path $app) {
+            $portName = "AstraLink-$ver-windows-portable.exe"
+            $zipName = "AstraLink-$ver-windows-portable.zip"
+            Copy-Item $app $portName
+            New-Item -Path ".portable" -ItemType file -Force | Out-Null
+            Compress-Archive -Path $portName, ".portable" -DestinationPath $zipName
+            Write-Host "Portable: $zipName"
           }
 
       - name: Upload Windows artifacts
