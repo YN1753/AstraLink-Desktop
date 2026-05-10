@@ -31,12 +31,20 @@ jobs:
 
       - name: Install NSIS
         shell: bash
-        run: choco install nsis -y
+        run: |
+          choco install nsis -y
+          echo "C:\Program Files (x86)\NSIS" >> $GITHUB_PATH
 
       - name: Get version from tag
         id: version
         shell: bash
         run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+
+      - name: Prepare icon
+        shell: bash
+        run: |
+          mkdir -p build/windows
+          cp icon.ico build/windows/icon.ico
 
       # 构建 NSIS 安装版（同时产出应用 exe 和安装程序 exe）
       - name: Build NSIS installer
@@ -48,17 +56,6 @@ jobs:
           $ver = "${{ steps.version.outputs.VERSION }}"
           Write-Host "--- build/bin contents ---"
           Get-ChildItem build/bin/ | Format-Table Name, Length
-
-          # 安装程序：找 *-installer.exe 并重命名
-          $installer = Get-ChildItem "build/bin/*-installer.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
-          if (-not $installer) {
-            Write-Error "NSIS installer not found! Files in build/bin:"
-            Get-ChildItem build/bin/
-            exit 1
-          }
-          $setupName = "AstraLink-$ver-windows-setup.exe"
-          Move-Item $installer.FullName $setupName
-          Write-Host "Setup: $($installer.Name) -> $setupName"
 
           # 便携版：用 AstraLink.exe 打包
           $app = "build/bin/AstraLink.exe"
@@ -77,7 +74,7 @@ jobs:
           name: windows-dist
           path: |
             AstraLink-*-windows-portable.zip
-            AstraLink-*-windows-setup.exe
+            build/bin/*-installer.exe
 
   build-macos:
     runs-on: macos-latest
@@ -102,6 +99,9 @@ jobs:
       - name: Get version from tag
         id: version
         run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+
+      - name: Prepare icon
+        run: cp appicon.png build/appicon.png
 
       - name: Build macOS App
         run: wails build -ldflags "-X main.AppVersion=${{ steps.version.outputs.VERSION }}"
