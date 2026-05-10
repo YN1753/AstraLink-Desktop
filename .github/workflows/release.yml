@@ -57,7 +57,7 @@ jobs:
 
       - name: Rename installer
         shell: pwsh
-        run: Rename-Item "build/bin/AstraLink-installer.exe" "AstraLink-${{ steps.version.outputs.VERSION }}-windows-setup.exe"
+        run: Rename-Item "build/bin/AstraLink-amd64-installer.exe" "AstraLink-${{ steps.version.outputs.VERSION }}-windows-setup.exe"
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
