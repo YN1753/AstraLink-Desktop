@@ -283,7 +283,123 @@ function insertLink(id, title) {
 
 defineExpose({ insertLink })
 
+const languages = [
+  'javascript', 'typescript', 'python', 'go', 'rust', 'java', 'c', 'cpp',
+  'csharp', 'ruby', 'php', 'swift', 'kotlin', 'scala', 'sql', 'bash',
+  'shell', 'powershell', 'json', 'yaml', 'xml', 'html', 'css', 'scss',
+  'markdown', 'dockerfile', 'toml', 'ini', 'lua', 'r', 'matlab', 'perl',
+  'haskell', 'elixir', 'clojure', 'latex', 'graphql', 'nginx', 'apache',
+]
+
+let langPickerEl = null
+function createLangPicker() {
+  const el = document.createElement('div')
+  el.className = 'lang-picker'
+  el.style.cssText = 'position:fixed;z-index:10000;display:none;width:200px;background:var(--glass-bg);backdrop-filter:blur(20px);border:1px solid var(--glass-border);border-radius:8px;box-shadow:0 12px 32px rgba(0,0,0,0.6);overflow:hidden;'
+  el.innerHTML = '<input type="text" placeholder="搜索语言..." style="width:100%;padding:8px 12px;background:transparent;border:none;border-bottom:1px solid var(--glass-border);outline:none;color:var(--text-primary);font-size:13px;font-family:inherit;box-sizing:border-box;" /><div class="lang-list" style="max-height:200px;overflow-y:auto;padding:4px;"></div>'
+  return el
+}
+
+function showLangPicker(preEl, codeBlockPos) {
+  if (!langPickerEl) {
+    langPickerEl = createLangPicker()
+    document.body.appendChild(langPickerEl)
+  }
+  const rect = preEl.getBoundingClientRect()
+  langPickerEl.style.left = (rect.right - 200) + 'px'
+  langPickerEl.style.top = (rect.bottom + 8) + 'px'
+  langPickerEl.style.display = 'block'
+  langPickerEl.dataset.pos = codeBlockPos
+
+  const input = langPickerEl.querySelector('input')
+  const listEl = langPickerEl.querySelector('.lang-list')
+  input.value = ''
+  input.focus()
+  renderLangList(listEl, '')
+
+  input.oninput = () => renderLangList(listEl, input.value)
+  input.onkeydown = (e) => {
+    if (e.key === 'Escape') { hideLangPicker(); return }
+    if (e.key === 'Enter') {
+      const first = listEl.querySelector('.lang-item')
+      if (first) selectLanguage(first.dataset.lang)
+    }
+  }
+
+  // Close on click outside
+  setTimeout(() => {
+    const closeHandler = (ev) => {
+      if (!langPickerEl?.contains(ev.target)) {
+        hideLangPicker()
+        document.removeEventListener('mousedown', closeHandler)
+      }
+    }
+    document.addEventListener('mousedown', closeHandler)
+  }, 50)
+}
+
+function renderLangList(listEl, filter) {
+  const filtered = filter
+    ? languages.filter(l => l.includes(filter.toLowerCase()))
+    : languages
+  listEl.innerHTML = filtered.map(lang =>
+    `<div class="lang-item" data-lang="${lang}" style="padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px;color:var(--text-secondary);font-family:'JetBrains Mono',monospace;transition:all 0.12s;">${lang}</div>`
+  ).join('')
+  listEl.querySelectorAll('.lang-item').forEach(el => {
+    el.onclick = () => selectLanguage(el.dataset.lang)
+  })
+}
+
+function selectLanguage(lang) {
+  const pos = parseInt(langPickerEl?.dataset.pos)
+  if (isNaN(pos)) return
+  const editor = get()
+  if (!editor) return
+  editor.action((ctx) => {
+    const view = ctx.get(editorViewCtx)
+    if (!view) return
+    const node = view.state.doc.nodeAt(pos)
+    if (!node || node.type.name !== 'code_block') return
+    const tr = view.state.tr.setNodeMarkup(pos, null, { ...node.attrs, language: lang })
+    view.dispatch(tr)
+    view.focus()
+  })
+  hideLangPicker()
+}
+
+function hideLangPicker() {
+  if (langPickerEl) langPickerEl.style.display = 'none'
+}
+
 function handleEditorClick(e) {
+  // Code block language picker
+  const preEl = e.target.closest('.ProseMirror pre')
+  if (preEl) {
+    const rect = preEl.getBoundingClientRect()
+    const clickX = e.clientX - rect.left
+    const clickY = e.clientY - rect.top
+    // Click in bottom-right area (language label)
+    if (clickY > rect.height - 34 && clickX > rect.width * 0.5) {
+      const editor = get()
+      if (editor) {
+        editor.action((ctx) => {
+          const view = ctx.get(editorViewCtx)
+          if (!view) return
+          view.state.doc.descendants((node, pos) => {
+            if (node.type.name === 'code_block') {
+              const dom = view.nodeDOM(pos)
+              if (dom === preEl || dom?.contains(preEl)) {
+                showLangPicker(preEl, pos)
+                return false
+              }
+            }
+          })
+        })
+      }
+      return
+    }
+  }
+
   const link = e.target.closest('.note-link') || e.target.closest('a[href^="note:"]')
   if (link) {
     e.preventDefault()
@@ -845,6 +961,7 @@ onUnmounted(() => {
   if (slashEl?.parentNode) slashEl.parentNode.removeChild(slashEl)
   if (linkEl?.parentNode) linkEl.parentNode.removeChild(linkEl)
   if (linkPreviewContainer?.parentNode) linkPreviewContainer.parentNode.removeChild(linkPreviewContainer)
+  if (langPickerEl?.parentNode) langPickerEl.parentNode.removeChild(langPickerEl)
 })
 </script>
 
@@ -1213,22 +1330,42 @@ onUnmounted(() => {
   position: relative;
 }
 
-/* Language label */
-:deep(.ProseMirror pre[data-language]::before) {
-  content: attr(data-language);
+/* Language label — bottom-right inside the code block */
+:deep(.ProseMirror pre::after) {
+  content: '选择语言';
   position: absolute;
-  top: 0;
-  right: 0;
-  padding: 4px 12px;
+  bottom: 6px;
+  right: 6px;
+  padding: 3px 10px;
   font-size: 11px;
   font-family: 'JetBrains Mono', 'Fira Code', monospace;
   color: var(--text-secondary);
-  opacity: 0.6;
-  background: rgba(128, 128, 128, 0.1);
-  border-bottom-left-radius: 6px;
-  pointer-events: none;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  cursor: pointer;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+  transition: all 0.15s;
+  z-index: 1;
+}
+
+:deep(.ProseMirror pre::after:hover) {
+  color: var(--text-primary);
+  border-color: rgba(255, 255, 255, 0.25);
+  background: rgba(0, 0, 0, 0.45);
+}
+
+:deep(.ProseMirror pre[data-language]::after) {
+  content: attr(data-language);
+  color: var(--accent);
+  background: rgba(0, 0, 0, 0.35);
+  border-color: rgba(var(--accent-rgb), 0.4);
+}
+
+:deep(.ProseMirror pre[data-language]::after:hover) {
+  border-color: var(--accent);
+  background: rgba(0, 0, 0, 0.5);
 }
 
 :deep(.ProseMirror pre code) {
@@ -1402,5 +1539,19 @@ onUnmounted(() => {
 .link-result-item:hover {
   background: rgba(var(--accent-rgb), 0.1) !important;
   color: var(--text-primary) !important;
+}
+
+/* Language picker */
+.lang-item:hover {
+  background: rgba(var(--accent-rgb), 0.1) !important;
+  color: var(--text-primary) !important;
+}
+
+.lang-picker::-webkit-scrollbar {
+  width: 3px;
+}
+.lang-picker::-webkit-scrollbar-thumb {
+  background: var(--glass-border);
+  border-radius: 2px;
 }
 </style>
