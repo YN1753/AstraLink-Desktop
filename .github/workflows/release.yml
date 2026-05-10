@@ -30,11 +30,8 @@ jobs:
         run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
 
       - name: Install NSIS
-        shell: pwsh
-        run: |
-          choco install nsis -y
-          Write-Host "NSIS path:"
-          where.exe makensis 2>&1 || Write-Host "makensis not in PATH"
+        shell: bash
+        run: choco install nsis -y
 
       - name: Get version from tag
         id: version
