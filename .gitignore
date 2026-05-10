@@ -29,9 +29,6 @@ build/
 frontend/wailsjs/
 
 # Root package-lock (not needed - Go project)
-package-lock.json
 Bleve教程.md
 功能规划.md
 .claude
-功能规划.md
-Astralink.md

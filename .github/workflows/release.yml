@@ -25,7 +25,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm' # 开启 npm 缓存（假设你使用 npm）
 
       - name: Install Wails
         run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
