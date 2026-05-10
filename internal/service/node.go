@@ -118,30 +118,27 @@ func (n *NodeService) GetAvatar(id string) (string, error) { //获取头像
 	return "data:" + mimeType + ";base64," + base64.StdEncoding.EncodeToString(data), nil
 }
 
-var allowedAttachmentTypes = map[string]string{
-	"image/png":      ".png",
-	"image/jpeg":     ".jpg",
-	"image/jpg":      ".jpg",
-	"image/gif":      ".gif",
-	"image/webp":     ".webp",
-	"image/svg+xml":  ".svg",
-	"application/pdf": ".pdf",
+var allowedAttachmentExts = map[string]bool{
+	".png":  true,
+	".jpg":  true,
+	".jpeg": true,
+	".gif":  true,
+	".webp": true,
+	".svg":  true,
+	".pdf":  true,
+	".doc":  true,
+	".docx": true,
+	".xls":  true,
+	".xlsx": true,
+	".ppt":  true,
+	".pptx": true,
+	".csv":  true,
 }
 
 func (n *NodeService) SaveAttachment(noteID string, dataURL string, filename string) (string, error) {
-	header, dataPart, ok := strings.Cut(dataURL, ",")
+	_, dataPart, ok := strings.Cut(dataURL, ",")
 	if !ok {
 		return "", fmt.Errorf("invalid data URL")
-	}
-	mimeType := ""
-	for mime := range allowedAttachmentTypes {
-		if strings.Contains(header, mime) {
-			mimeType = mime
-			break
-		}
-	}
-	if mimeType == "" {
-		return "", fmt.Errorf("unsupported file type")
 	}
 
 	data, err := base64.StdEncoding.DecodeString(dataPart)
@@ -156,10 +153,10 @@ func (n *NodeService) SaveAttachment(noteID string, dataURL string, filename str
 	if len(sanitized) > 200 {
 		sanitized = sanitized[:200]
 	}
-	// Ensure correct extension
-	ext := allowedAttachmentTypes[mimeType]
-	if filepath.Ext(sanitized) == "" {
-		sanitized += ext
+	// Validate extension
+	ext := strings.ToLower(filepath.Ext(sanitized))
+	if !allowedAttachmentExts[ext] {
+		return "", fmt.Errorf("unsupported file type: %s", ext)
 	}
 
 	subDir := filepath.Join("assets", noteID)
@@ -198,6 +195,20 @@ func (n *NodeService) ReadFileAsDataUrl(filePath string) (string, error) {
 		mimeType = "image/svg+xml"
 	case ".pdf":
 		mimeType = "application/pdf"
+	case ".doc":
+		mimeType = "application/msword"
+	case ".docx":
+		mimeType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+	case ".xls":
+		mimeType = "application/vnd.ms-excel"
+	case ".xlsx":
+		mimeType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+	case ".ppt":
+		mimeType = "application/vnd.ms-powerpoint"
+	case ".pptx":
+		mimeType = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+	case ".csv":
+		mimeType = "text/csv"
 	}
 	return "data:" + mimeType + ";base64," + base64.StdEncoding.EncodeToString(data), nil
 }

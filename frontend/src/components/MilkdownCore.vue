@@ -293,15 +293,18 @@ function handleEditorClick(e) {
   const attachLink = e.target.closest('a[href^="assets/"]')
   if (attachLink) {
     const href = attachLink.getAttribute('href')
-    if (href && href.endsWith('.pdf')) {
-      e.preventDefault()
-      const parts = href.split('/')
-      if (parts.length >= 3) {
-        const noteId = parts[1]
-        const filename = parts.slice(2).join('/')
-        GetAttachmentPath(noteId, filename).then((fullPath) => {
-          if (fullPath) OpenURL(fullPath)
-        })
+    if (href) {
+      const ext = href.split('.').pop()?.toLowerCase() || ''
+      if (isDocumentFile(ext)) {
+        e.preventDefault()
+        const parts = href.split('/')
+        if (parts.length >= 3) {
+          const noteId = parts[1]
+          const filename = parts.slice(2).join('/')
+          GetAttachmentPath(noteId, filename).then((fullPath) => {
+            if (fullPath) OpenURL(fullPath)
+          })
+        }
       }
     }
   }
@@ -562,7 +565,7 @@ function executeSlashCommand(action) {
       case 'attachment': {
         const input = document.createElement('input')
         input.type = 'file'
-        input.accept = 'image/png,image/jpeg,image/gif,image/webp,image/svg+xml,application/pdf'
+        input.accept = 'image/png,image/jpeg,image/gif,image/webp,image/svg+xml,application/pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.csv'
         input.multiple = true
         input.onchange = async () => {
           const files = input.files
@@ -610,25 +613,36 @@ function readFileAsDataUrl(file) {
   })
 }
 
+const documentExts = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'csv']
+
+function isImageFile(fileOrExt) {
+  if (typeof fileOrExt === 'string') return ['png','jpg','jpeg','gif','webp','svg'].includes(fileOrExt)
+  return fileOrExt.type?.startsWith('image/')
+}
+
+function isDocumentFile(fileOrExt) {
+  if (typeof fileOrExt === 'string') return documentExts.includes(fileOrExt)
+  const ext = fileOrExt.name?.split('.').pop()?.toLowerCase() || ''
+  return documentExts.includes(ext)
+}
+
 // Upload a single file and return a ProseMirror node, or null
 async function uploadSingleFile(file, schema) {
-  const isImage = file.type.startsWith('image/')
-  const isPDF = file.type === 'application/pdf'
-  if (!isImage && !isPDF) return null
-
   const dataUrl = await readFileAsDataUrl(file)
 
-  if (isImage) {
-    // Images: use base64 data URL directly, renders inline
+  if (isImageFile(file)) {
     return schema.nodes.image.createAndFill({ src: dataUrl, alt: file.name })
   }
 
-  // PDFs: save to disk, use relative path as link
-  const noteId = props.noteId
-  if (!noteId || noteId.startsWith('new-')) return null
-  const relativePath = await SaveAttachment(noteId, dataUrl, file.name)
-  const linkMark = schema.marks.link.create({ href: relativePath })
-  return schema.text(file.name, [linkMark])
+  if (isDocumentFile(file)) {
+    const noteId = props.noteId
+    if (!noteId || noteId.startsWith('new-')) return null
+    const relativePath = await SaveAttachment(noteId, dataUrl, file.name)
+    const linkMark = schema.marks.link.create({ href: relativePath })
+    return schema.text(file.name, [linkMark])
+  }
+
+  return null
 }
 
 const { get } = useEditor((root) => {
@@ -659,20 +673,20 @@ onMounted(() => {
   document.body.appendChild(linkEl)
 
   tooltipProvider = new TooltipProvider({ content: tooltipEl, debounce: 50 })
-  slashProvider = new SlashProvider({ content: slashEl, debounce: 0, offset: 8 })
+  slashProvider = new SlashProvider({ content: slashEl, debounce: 0, trigger: '/' })
   linkProvider = new SlashProvider({ content: linkEl, debounce: 0, offset: 8 })
 
   linkEl.addEventListener('input', handleLinkInput)
   linkEl.addEventListener('click', handleLinkClick)
 
-  // Handle paste with images/PDFs directly on the editor DOM
+  // Handle paste with images/documents directly on the editor DOM
   const editorEl = document.querySelector('.milkdown-wrapper')
   if (editorEl) {
     editorEl.addEventListener('paste', (e) => {
       const files = e.clipboardData?.files
       if (!files || files.length === 0) return
       const hasAttachment = Array.from(files).some(f =>
-        f.type.startsWith('image/') || f.type === 'application/pdf'
+        isImageFile(f) || isDocumentFile(f)
       )
       if (!hasAttachment) return
 
@@ -682,21 +696,20 @@ onMounted(() => {
       const editor = get()
       if (!editor) return
 
-      editor.action((ctx) => {
-        const view = ctx.get(editorViewCtx)
-        if (!view) return
-        const { schema } = view.state
-        const insertPos = view.state.selection.from
+      for (const file of files) {
+        editor.action((ctx) => {
+          const view = ctx.get(editorViewCtx)
+          if (!view) return
+          const { schema } = view.state
+          const insertPos = view.state.selection.from
 
-        for (const file of files) {
           uploadSingleFile(file, schema).then(node => {
             if (!node) return
-            const { state, dispatch: disp } = view
-            disp(state.tr.insert(insertPos, node))
+            view.dispatch(view.state.tr.insert(insertPos, node))
             view.focus()
           }).catch(err => console.error('Paste upload failed:', err))
-        }
-      })
+        })
+      }
     }, true)
   }
 
@@ -712,9 +725,7 @@ onMounted(() => {
       try {
         const fileName = filePath.split(/[/\\]/).pop() || 'file'
         const ext = fileName.split('.').pop()?.toLowerCase() || ''
-        const isImage = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes(ext)
-        const isPDF = ext === 'pdf'
-        if (!isImage && !isPDF) continue
+        if (!isImageFile(ext) && !isDocumentFile(ext)) continue
 
         // Read file from disk via Go backend
         const dataUrl = await ReadFileAsDataUrl(filePath)
@@ -722,32 +733,32 @@ onMounted(() => {
         editor.action((ctx) => {
           const view = ctx.get(editorViewCtx)
           if (!view) return
-          const { state, dispatch: disp } = view
-          const { schema } = state
-          const insertPos = state.selection.from
+          const { schema } = view.state
+          const insertPos = view.state.selection.from
 
-          if (isImage) {
+          if (isImageFile(ext)) {
             const node = schema.nodes.image.createAndFill({ src: dataUrl, alt: fileName })
-            if (node) disp(state.tr.insert(insertPos, node))
+            if (node) {
+              view.dispatch(view.state.tr.insert(insertPos, node))
+              view.focus()
+            }
           } else {
-            // PDF: save to assets and insert as link
+            // Document: save to assets and insert as link
             const noteId = props.noteId
             if (!noteId || noteId.startsWith('new-')) return
             SaveAttachment(noteId, dataUrl, fileName).then(relativePath => {
               const linkMark = schema.marks.link.create({ href: relativePath })
               const textNode = schema.text(fileName, [linkMark])
-              disp(state.tr.insert(insertPos, textNode))
+              view.dispatch(view.state.tr.insert(insertPos, textNode))
               view.focus()
             })
-            return
           }
-          view.focus()
         })
       } catch (e) {
         console.error('File drop upload failed:', e)
       }
     }
-  }, true)
+  }, false)
 
   pollTimer = setInterval(() => {
     const editor = get()
@@ -765,28 +776,7 @@ onMounted(() => {
           }
         }
         if (view && slashProvider) {
-          const { $from } = view.state.selection
-          const lineTextBefore = $from.parent.textBetween(0, $from.parentOffset)
-          const isSlash = lineTextBefore === '/' || lineTextBefore.endsWith(' /')
-          if (isSlash) {
-            try {
-              const coords = view.coordsAtPos($from.pos)
-              slashProvider.show({
-                getBoundingClientRect() {
-                  return {
-                    width: 0, height: 0,
-                    x: coords.left, y: coords.top,
-                    top: coords.top, left: coords.left,
-                    right: coords.left, bottom: coords.top,
-                  }
-                }
-              })
-            } catch (e) {
-              slashProvider.hide()
-            }
-          } else {
-            slashProvider.hide()
-          }
+          slashProvider.update(view)
         }
         if (view) {
           const { $from } = view.state.selection
@@ -997,8 +987,8 @@ onUnmounted(() => {
   align-items: center;
 }
 
-/* PDF / attachment links */
-:deep(.ProseMirror a[href^="assets/"][href$=".pdf"]) {
+/* Document attachment links (PDF, Word, Excel, etc.) */
+:deep(.ProseMirror a[href^="assets/"]) {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -1014,11 +1004,59 @@ onUnmounted(() => {
 }
 
 :deep(.ProseMirror a[href^="assets/"][href$=".pdf"]::before) {
-  content: '\1F4C4';
-  font-size: 14px;
+  content: 'PDF';
+  font-size: 10px;
+  font-weight: 700;
+  background: #ef4444;
+  color: white;
+  padding: 1px 4px;
+  border-radius: 3px;
 }
 
-:deep(.ProseMirror a[href^="assets/"][href$=".pdf"]:hover) {
+:deep(.ProseMirror a[href^="assets/"][href$=".doc"]::before),
+:deep(.ProseMirror a[href^="assets/"][href$=".docx"]::before) {
+  content: 'Word';
+  font-size: 10px;
+  font-weight: 700;
+  background: #2b579a;
+  color: white;
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+:deep(.ProseMirror a[href^="assets/"][href$=".xls"]::before),
+:deep(.ProseMirror a[href^="assets/"][href$=".xlsx"]::before) {
+  content: 'Excel';
+  font-size: 10px;
+  font-weight: 700;
+  background: #217346;
+  color: white;
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+:deep(.ProseMirror a[href^="assets/"][href$=".ppt"]::before),
+:deep(.ProseMirror a[href^="assets/"][href$=".pptx"]::before) {
+  content: 'PPT';
+  font-size: 10px;
+  font-weight: 700;
+  background: #d24726;
+  color: white;
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+:deep(.ProseMirror a[href^="assets/"][href$=".csv"]::before) {
+  content: 'CSV';
+  font-size: 10px;
+  font-weight: 700;
+  background: #16a34a;
+  color: white;
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+:deep(.ProseMirror a[href^="assets/"]:hover) {
   background: rgba(239, 68, 68, 0.18);
   transform: translateY(-1px);
 }
