@@ -29,6 +29,10 @@ jobs:
       - name: Install Wails
         run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
 
+      - name: Install NSIS
+        shell: bash
+        run: choco install nsis -y
+
       - name: Get version from tag
         id: version
         shell: bash
@@ -41,11 +45,8 @@ jobs:
       - name: Prepare portable package
         shell: pwsh
         run: |
-          # 重命名原始 exe
           Rename-Item "build/bin/AstraLink.exe" "AstraLink-${{ steps.version.outputs.VERSION }}-windows-portable.exe"
-          # 创建 .portable 标识文件（用于代码内判断便携模式）
           New-Item -Path "build/bin/.portable" -ItemType "file"
-          # 将 exe 和 .portable 标识文件一起打包
           Compress-Archive -Path `
             "build/bin/AstraLink-${{ steps.version.outputs.VERSION }}-windows-portable.exe", `
             "build/bin/.portable" `
@@ -53,19 +54,22 @@ jobs:
 
       # 2. 构建 NSIS 安装版 (Setup)
       - name: Build NSIS installer
-        run: wails build -nsis -ldflags "-X main.AppVersion=${{ steps.version.outputs.VERSION }}"
-
-      - name: List build output
-        shell: pwsh
-        run: Get-ChildItem build/bin/
+        shell: bash
+        run: |
+          wails build -nsis -ldflags "-X main.AppVersion=${{ steps.version.outputs.VERSION }}"
+          echo "--- build/bin contents ---"
+          ls -la build/bin/
 
       - name: Rename installer
         shell: pwsh
         run: |
           $installer = Get-ChildItem build/bin/*-installer.exe | Select-Object -First 1
           if ($installer) {
+            Write-Host "Found installer: $($installer.FullName)"
             Rename-Item $installer.FullName "AstraLink-${{ steps.version.outputs.VERSION }}-windows-setup.exe"
           } else {
+            Write-Host "Available files in build/bin/:"
+            Get-ChildItem build/bin/ | Format-Table Name, Length
             Write-Error "No installer exe found in build/bin/"
             exit 1
           }
