@@ -9,10 +9,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"os/exec"
 	"runtime"
 	"strings"
 	"time"
+
 )
 
 type App struct {
@@ -233,14 +235,49 @@ func (a *App) CheckUpdate() (model.UpdateInfo, error) {
 
 	for _, asset := range release.Assets {
 		name := strings.ToLower(asset.Name)
-		if strings.HasSuffix(name, ".exe") || strings.HasSuffix(name, ".msi") {
-			info.ExeURL = asset.BrowserDownloadURL
-			info.ExeSize = asset.Size
-		} else if strings.HasSuffix(name, ".zip") {
+		if strings.HasSuffix(name, ".zip") {
 			info.ZipURL = asset.BrowserDownloadURL
 			info.ZipSize = asset.Size
+		} else if strings.HasSuffix(name, ".exe") || strings.HasSuffix(name, ".msi") {
+			isInstaller := strings.Contains(name, "setup") || strings.Contains(name, "installer")
+			if isInstaller || info.ExeURL == "" {
+				info.ExeURL = asset.BrowserDownloadURL
+				info.ExeSize = asset.Size
+				info.ExeName = asset.Name
+			}
 		}
 	}
 
 	return info, nil
+}
+
+func (a *App) DownloadAndInstallUpdate(url string) (string, error) {
+	parts := strings.Split(url, "/")
+	fileName := parts[len(parts)-1]
+	if fileName == "" {
+		fileName = "AstraLink-Update.exe"
+	}
+	savePath := os.TempDir() + string(os.PathSeparator) + fileName
+
+	os.Remove(savePath)
+
+	psCmd := fmt.Sprintf(
+		"[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '%s' -OutFile '%s' -UseBasicParsing",
+		url, savePath,
+	)
+	cmd := exec.Command("powershell", "-NoProfile", "-Command", psCmd)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("下载失败: %s", string(output))
+	}
+
+	if _, err := os.Stat(savePath); err != nil {
+		return "", fmt.Errorf("下载文件不存在: %w", err)
+	}
+
+	return savePath, nil
+}
+
+func (a *App) OpenFileInExplorer(filePath string) error {
+	return exec.Command("explorer", "/select,", filePath).Start()
 }

@@ -63,10 +63,14 @@ jobs:
       - name: Rename installer
         shell: pwsh
         run: |
-          if (Test-Path "build/bin/AstraLink.exe") {
-            Move-Item "build/bin/AstraLink.exe" "AstraLink-${{ steps.version.outputs.VERSION }}-windows-setup.exe"
+          Write-Host "--- build/bin contents ---"
+          Get-ChildItem build/bin/ | Format-Table Name, Length
+          $installer = Get-ChildItem "build/bin/*-installer.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($installer) {
+            Move-Item $installer.FullName "AstraLink-${{ steps.version.outputs.VERSION }}-windows-setup.exe"
+            Write-Host "Renamed: $($installer.Name) -> AstraLink-${{ steps.version.outputs.VERSION }}-windows-setup.exe"
           } else {
-            Write-Error "AstraLink.exe not found in build/bin/"
+            Write-Error "NSIS installer not found in build/bin/"
             exit 1
           }
 

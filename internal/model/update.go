@@ -10,4 +10,5 @@ type UpdateInfo struct {
 	ExeSize     int64  `json:"exeSize"`
 	ZipSize     int64  `json:"zipSize"`
 	IsPortable  bool   `json:"isPortable"`
+	ExeName     string `json:"exeName"`
 }

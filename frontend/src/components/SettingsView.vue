@@ -1,7 +1,7 @@
 <script setup>
 import { ref, watch, onMounted, onUnmounted } from 'vue'
 import QRCode from 'qrcode'
-import { CheckUpdate, GetVersion, OpenURL } from '../../wailsjs/go/main/App'
+import { CheckUpdate, GetVersion, OpenURL, DownloadAndInstallUpdate, OpenFileInExplorer } from '../../wailsjs/go/main/App'
 
 const props = defineProps(['user', 'config', 'themes'])
 const emit = defineEmits(['close', 'update-user', 'update-config', 'update-avatar'])
@@ -38,6 +38,8 @@ const showUpdateModal = ref(false)
 const updateInfo = ref(null)
 const updateToast = ref('')
 const updateError = ref('')
+const downloading = ref(false)
+const downloadedFilePath = ref('')
 const copiedToast = ref(false)
 
 async function loadVersion() {
@@ -73,6 +75,26 @@ async function handleCheckUpdate() {
     setTimeout(() => { updateError.value = '' }, 3000)
   } finally {
     checkingUpdate.value = false
+  }
+}
+
+async function handleDownload(url) {
+  downloading.value = true
+  downloadedFilePath.value = ''
+  try {
+    const savePath = await DownloadAndInstallUpdate(url)
+    downloading.value = false
+    downloadedFilePath.value = savePath
+  } catch (e) {
+    updateError.value = '下载失败: ' + (e.message || e)
+    setTimeout(() => { updateError.value = '' }, 4000)
+    downloading.value = false
+  }
+}
+
+function handleOpenFolder() {
+  if (downloadedFilePath.value) {
+    OpenFileInExplorer(downloadedFilePath.value)
   }
 }
 
@@ -637,32 +659,49 @@ const showProfileModal = ref(false)
                 <pre>{{ updateInfo.releaseNote }}</pre>
               </div>
               <div class="update-downloads">
-                <button
-                  v-if="!updateInfo.isPortable && updateInfo.exeUrl"
-                  class="download-btn"
-                  @click="OpenURL(updateInfo.exeUrl)"
-                >
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                    <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>
-                  </svg>
-                  <div class="download-text">
-                    <span class="download-name">下载安装版 (EXE)</span>
-                    <span class="download-size" v-if="updateInfo.exeSize">{{ formatSize(updateInfo.exeSize) }}</span>
+                <div v-if="downloading" class="download-progress">
+                  <div class="progress-info">
+                    <div class="btn-spinner"></div>
+                    <div class="progress-text">
+                      <span class="progress-label">正在下载，请稍候...</span>
+                    </div>
                   </div>
-                </button>
-                <button
-                  v-if="updateInfo.isPortable && updateInfo.zipUrl"
-                  class="download-btn"
-                  @click="OpenURL(updateInfo.zipUrl)"
-                >
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                    <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+                </div>
+                <div v-else-if="downloadedFilePath" class="install-confirm">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="install-icon">
+                    <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
                   </svg>
-                  <div class="download-text">
-                    <span class="download-name">下载便携版 (ZIP)</span>
-                    <span class="download-size" v-if="updateInfo.zipSize">{{ formatSize(updateInfo.zipSize) }}</span>
-                  </div>
-                </button>
+                  <span class="install-text">下载完成，请在打开的文件夹中运行安装程序</span>
+                  <button class="install-btn" @click="handleOpenFolder">打开文件夹</button>
+                </div>
+                <template v-else>
+                  <button
+                    v-if="!updateInfo.isPortable && updateInfo.exeUrl"
+                    class="download-btn"
+                    @click="handleDownload(updateInfo.exeUrl)"
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                      <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+                    </svg>
+                    <div class="download-text">
+                      <span class="download-name">下载安装版 (EXE)</span>
+                      <span class="download-size" v-if="updateInfo.exeSize">{{ formatSize(updateInfo.exeSize) }}</span>
+                    </div>
+                  </button>
+                  <button
+                    v-if="updateInfo.isPortable && updateInfo.zipUrl"
+                    class="download-btn"
+                    @click="OpenURL(updateInfo.zipUrl)"
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                      <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+                    </svg>
+                    <div class="download-text">
+                      <span class="download-name">下载便携版 (ZIP)</span>
+                      <span class="download-size" v-if="updateInfo.zipSize">{{ formatSize(updateInfo.zipSize) }}</span>
+                    </div>
+                  </button>
+                </template>
               </div>
             </div>
           </div>
@@ -1989,5 +2028,106 @@ textarea.form-input {
 .download-size {
   font-size: 12px;
   color: var(--text-secondary);
+}
+
+.download-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 18px;
+  background: rgba(var(--accent-rgb), 0.08);
+  border: 1px solid rgba(var(--accent-rgb), 0.2);
+  border-radius: 14px;
+}
+
+.progress-info {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.progress-icon {
+  width: 22px;
+  height: 22px;
+  color: var(--accent);
+  flex-shrink: 0;
+  animation: spin 1.2s linear infinite;
+}
+
+.progress-text {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex: 1;
+}
+
+.progress-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.progress-percent {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--accent);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.progress-track {
+  width: 100%;
+  height: 6px;
+  background: rgba(128, 128, 128, 0.15);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 3px;
+  transition: width 0.15s ease;
+}
+
+.install-confirm {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 20px 18px;
+  background: rgba(var(--accent-rgb), 0.08);
+  border: 1px solid rgba(var(--accent-rgb), 0.2);
+  border-radius: 14px;
+  text-align: center;
+}
+
+.install-icon {
+  width: 36px;
+  height: 36px;
+  color: #22c55e;
+}
+
+.install-text {
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.install-btn {
+  padding: 10px 28px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: inherit;
+}
+
+.install-btn:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
 }
 </style>
