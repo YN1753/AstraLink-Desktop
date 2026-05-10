@@ -93,7 +93,7 @@ AstraLink/
 - [x] 数据本地存储
 - [x] 软件内版本更新检查
 - [x] NSIS 安装包打包
-
+- [x] 支持mac和windows
 ## License
 
 MIT
