@@ -31,8 +31,8 @@ jobs:
 
       - name: Get version from tag
         id: version
-        shell: pwsh
-        run: echo "VERSION=${($env:GITHUB_REF_NAME).TrimStart('v')}" >> $env:GITHUB_OUTPUT
+        shell: bash
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
 
       # 1. 构建便携版 (Portable)
       - name: Build portable exe
@@ -55,9 +55,20 @@ jobs:
       - name: Build NSIS installer
         run: wails build -nsis -ldflags "-X main.AppVersion=${{ steps.version.outputs.VERSION }}"
 
+      - name: List build output
+        shell: pwsh
+        run: Get-ChildItem build/bin/
+
       - name: Rename installer
         shell: pwsh
-        run: Rename-Item "build/bin/AstraLink-amd64-installer.exe" "AstraLink-${{ steps.version.outputs.VERSION }}-windows-setup.exe"
+        run: |
+          $installer = Get-ChildItem build/bin/*-installer.exe | Select-Object -First 1
+          if ($installer) {
+            Rename-Item $installer.FullName "AstraLink-${{ steps.version.outputs.VERSION }}-windows-setup.exe"
+          } else {
+            Write-Error "No installer exe found in build/bin/"
+            exit 1
+          }
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
@@ -83,7 +94,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
 
       - name: Install Wails
         run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
@@ -95,16 +105,26 @@ jobs:
       - name: Build macOS App
         run: wails build -ldflags "-X main.AppVersion=${{ steps.version.outputs.VERSION }}"
 
-      - name: Create zip
+      - name: Create portable zip
         run: |
           cd build/bin
-          zip -r "../../AstraLink-${{ steps.version.outputs.VERSION }}-macos.zip" .
+          touch .portable
+          zip -r "../../AstraLink-${{ steps.version.outputs.VERSION }}-macos-portable.zip" . .portable
+
+      - name: Create DMG installer
+        run: |
+          mkdir dmg-staging
+          cp -r build/bin/*.app dmg-staging/
+          ln -s /Applications dmg-staging/Applications
+          hdiutil create -volname "AstraLink" -srcfolder dmg-staging -ov -format UDZO "AstraLink-${{ steps.version.outputs.VERSION }}-macos.dmg"
 
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4
         with:
           name: macos-dist
-          path: AstraLink-*-macos.zip
+          path: |
+            AstraLink-*-macos-portable.zip
+            AstraLink-*-macos.dmg
 
   release:
     needs: [build-windows, build-macos]
