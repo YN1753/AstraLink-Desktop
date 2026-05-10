@@ -63,9 +63,8 @@ jobs:
       - name: Rename installer
         shell: pwsh
         run: |
-          $installer = "build/bin/AstraLink.exe"
-          if (Test-Path $installer) {
-            Rename-Item $installer "build/bin/AstraLink-${{ steps.version.outputs.VERSION }}-windows-setup.exe"
+          if (Test-Path "build/bin/AstraLink.exe") {
+            Move-Item "build/bin/AstraLink.exe" "AstraLink-${{ steps.version.outputs.VERSION }}-windows-setup.exe"
           } else {
             Write-Error "AstraLink.exe not found in build/bin/"
             exit 1
@@ -77,7 +76,7 @@ jobs:
           name: windows-dist
           path: |
             AstraLink-*-windows-portable.zip
-            build/bin/*-setup.exe
+            AstraLink-*-windows-setup.exe
 
   build-macos:
     runs-on: macos-latest
