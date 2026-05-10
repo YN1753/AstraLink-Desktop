@@ -63,14 +63,11 @@ jobs:
       - name: Rename installer
         shell: pwsh
         run: |
-          $installer = Get-ChildItem build/bin/*-installer.exe | Select-Object -First 1
-          if ($installer) {
-            Write-Host "Found installer: $($installer.FullName)"
-            Rename-Item $installer.FullName "AstraLink-${{ steps.version.outputs.VERSION }}-windows-setup.exe"
+          $installer = "build/bin/AstraLink.exe"
+          if (Test-Path $installer) {
+            Rename-Item $installer "build/bin/AstraLink-${{ steps.version.outputs.VERSION }}-windows-setup.exe"
           } else {
-            Write-Host "Available files in build/bin/:"
-            Get-ChildItem build/bin/ | Format-Table Name, Length
-            Write-Error "No installer exe found in build/bin/"
+            Write-Error "AstraLink.exe not found in build/bin/"
             exit 1
           }
 
