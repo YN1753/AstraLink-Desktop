@@ -1,0 +1,124 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*' # 当推送 v1.0.0, v2.1.0 等标签时触发
+
+permissions:
+  contents: write # 赋予创建 Release 和上传附件的权限
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: true # 开启 Go 模块缓存
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm' # 开启 npm 缓存（假设你使用 npm）
+
+      - name: Install Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+      - name: Get version from tag
+        id: version
+        shell: pwsh
+        run: echo "VERSION=${($env:GITHUB_REF_NAME).TrimStart('v')}" >> $env:GITHUB_OUTPUT
+
+      # 1. 构建便携版 (Portable)
+      - name: Build portable exe
+        run: wails build -ldflags "-X main.AppVersion=${{ steps.version.outputs.VERSION }}"
+
+      - name: Prepare portable package
+        shell: pwsh
+        run: |
+          # 重命名原始 exe
+          Rename-Item "build/bin/AstraLink.exe" "AstraLink-${{ steps.version.outputs.VERSION }}-windows-portable.exe"
+          # 创建 .portable 标识文件（用于代码内判断便携模式）
+          New-Item -Path "build/bin/.portable" -ItemType "file"
+          # 将 exe 和 .portable 标识文件一起打包
+          Compress-Archive -Path `
+            "build/bin/AstraLink-${{ steps.version.outputs.VERSION }}-windows-portable.exe", `
+            "build/bin/.portable" `
+            -DestinationPath "AstraLink-${{ steps.version.outputs.VERSION }}-windows-portable.zip"
+
+      # 2. 构建 NSIS 安装版 (Setup)
+      - name: Build NSIS installer
+        run: wails build -nsis -ldflags "-X main.AppVersion=${{ steps.version.outputs.VERSION }}"
+
+      - name: Rename installer
+        shell: pwsh
+        run: Rename-Item "build/bin/AstraLink-installer.exe" "AstraLink-${{ steps.version.outputs.VERSION }}-windows-setup.exe"
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-dist
+          path: |
+            AstraLink-*-windows-portable.zip
+            build/bin/*-setup.exe
+
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: true
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+      - name: Get version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+
+      - name: Build macOS App
+        run: wails build -ldflags "-X main.AppVersion=${{ steps.version.outputs.VERSION }}"
+
+      - name: Create zip
+        run: |
+          cd build/bin
+          zip -r "../../AstraLink-${{ steps.version.outputs.VERSION }}-macos.zip" .
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-dist
+          path: AstraLink-*-macos.zip
+
+  release:
+    needs: [build-windows, build-macos]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: artifacts/*
