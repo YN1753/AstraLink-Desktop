@@ -57,6 +57,16 @@ jobs:
           Write-Host "--- build/bin contents ---"
           Get-ChildItem build/bin/ | Format-Table Name, Length
 
+          # 安装程序：移到根目录
+          $installer = Get-ChildItem "build/bin/*-installer.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($installer) {
+            Copy-Item $installer.FullName $installer.Name
+            Write-Host "Installer: $($installer.Name)"
+          } else {
+            Write-Error "NSIS installer not found!"
+            exit 1
+          }
+
           # 便携版：用 AstraLink.exe 打包
           $app = "build/bin/AstraLink.exe"
           if (Test-Path $app) {
@@ -74,7 +84,7 @@ jobs:
           name: windows-dist
           path: |
             AstraLink-*-windows-portable.zip
-            build/bin/*-installer.exe
+            *-installer.exe
 
   build-macos:
     runs-on: macos-latest
