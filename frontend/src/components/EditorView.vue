@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { MilkdownProvider } from '@milkdown/vue'
 import MilkdownCore from './MilkdownCore.vue'
 import TagInput from './TagInput.vue'
@@ -13,13 +13,28 @@ const openTabs = ref([])
 const currentTabId = ref(null)
 const tabCounter = ref(0)
 const mounted = ref(false)
+const saveToast = ref('')
+let toastTimer = null
+
+function showToast(msg, duration = 2000) {
+  saveToast.value = msg
+  if (toastTimer) clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => { saveToast.value = '' }, duration)
+}
+
+function onKeyDown(e) {
+  if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+    e.preventDefault()
+    onSave()
+  }
+}
 
 const currentTab = computed(() => openTabs.value.find(t => t.id === currentTabId.value))
 
 async function openNote(note = null, forceReload = false) {
   if (!note) {
     const id = `new-${++tabCounter.value}`
-    openTabs.value.push({ id, name: '未命名', content: '', isNew: true })
+    openTabs.value.push({ id, name: '未命名', content: '', isNew: true, dirty: false })
     currentTabId.value = id
     noteTags.value[id] = []
     return
@@ -44,9 +59,10 @@ async function openNote(note = null, forceReload = false) {
 
   if (existing && forceReload) {
     existing.content = content || note.content || ''
+    existing.dirty = false
     currentTabId.value = note.id
   } else {
-    openTabs.value.push({ id: note.id, name: title, content: content || note.content || '', isNew: false })
+    openTabs.value.push({ id: note.id, name: title, content: content || note.content || '', isNew: false, dirty: false })
     currentTabId.value = note.id
   }
 
@@ -70,13 +86,18 @@ function closeTab(id) {
 
 onMounted(async () => {
   setTimeout(() => { mounted.value = true }, 50)
+  window.addEventListener('keydown', onKeyDown)
   if (props.noteId) {
     await openNote({ id: props.noteId, name: '' })
   } else {
     openNote()
   }
-  // Preload file tree in background
   loadFileTree()
+})
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', onKeyDown)
+  if (toastTimer) clearTimeout(toastTimer)
 })
 
 watch(() => props.noteId, async (newId) => {
@@ -141,6 +162,7 @@ const currentContent = computed({
 function onContentChange(content) {
   if (!currentTab.value) return
   currentTab.value.content = content
+  currentTab.value.dirty = true
 }
 
 const extractTitle = (md) => {
@@ -174,6 +196,7 @@ async function onSave() {
     }
     currentTab.value.name = title
     currentTab.value.isNew = false
+    currentTab.value.dirty = false
 
     const tags = noteTags.value[currentTab.value.id] || []
     if (tags.length > 0) {
@@ -182,8 +205,10 @@ async function onSave() {
 
     emit('saved', { id: currentTab.value.id, name: currentTab.value.name })
     emit('refresh-tags')
+    showToast('保存成功')
   } catch (e) {
     console.error('保存失败:', e)
+    showToast('保存失败')
   }
 }
 
@@ -365,7 +390,7 @@ function openNoteFromTree(node) {
           :class="['tab', { active: tab.id === currentTabId }]"
           @click="currentTabId = tab.id"
         >
-          <span class="tab-name">{{ tab.name || '未命名' }}</span>
+          <span class="tab-name">{{ tab.name || '未命名' }}<span v-if="tab.dirty" class="tab-dirty"> *</span></span>
           <span class="tab-close" @click.stop="closeTab(tab.id)">
             <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="18" y1="6" x2="6" y2="18"/>
@@ -398,7 +423,7 @@ function openNoteFromTree(node) {
             <span class="status-dot"></span>
             <span>{{ status }}</span>
           </div>
-          <button class="save-btn" @click="onSave">
+          <button class="save-btn" @click="onSave" title="Ctrl+S">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/>
               <polyline points="17 21 17 13 7 13 7 21"/>
@@ -533,6 +558,13 @@ function openNoteFromTree(node) {
       @close="hideLinkPicker"
       @select-note="handleLinkSelect"
     />
+
+    <!-- Save Toast -->
+    <Transition name="toast-fade">
+      <div v-if="saveToast" class="save-toast" :class="{ error: saveToast === '保存失败' }">
+        {{ saveToast }}
+      </div>
+    </Transition>
   </div>
 </template>
 
@@ -610,6 +642,11 @@ function openNoteFromTree(node) {
   max-width: 100px;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.tab-dirty {
+  color: var(--accent);
+  font-weight: 600;
 }
 
 .tab-close {
@@ -960,5 +997,40 @@ function openNoteFromTree(node) {
 .editor-scroll-area::-webkit-scrollbar-thumb {
   background: var(--glass-border);
   border-radius: 3px;
+}
+
+/* Save toast */
+.save-toast {
+  position: fixed;
+  bottom: 40px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 10px 28px;
+  background: rgba(74, 222, 128, 0.15);
+  color: #4ade80;
+  border: 1px solid rgba(74, 222, 128, 0.25);
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 500;
+  backdrop-filter: blur(20px);
+  z-index: 9999;
+  pointer-events: none;
+}
+
+.save-toast.error {
+  background: rgba(248, 113, 113, 0.15);
+  color: #f87171;
+  border-color: rgba(248, 113, 113, 0.25);
+}
+
+.toast-fade-enter-active,
+.toast-fade-leave-active {
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.toast-fade-enter-from,
+.toast-fade-leave-to {
+  opacity: 0;
+  transform: translateX(-50%) translateY(10px);
 }
 </style>
